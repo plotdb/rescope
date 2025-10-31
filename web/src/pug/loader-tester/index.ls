@@ -1,6 +1,18 @@
 scope = new rescope do
   registry: ({url, name, version, path}) -> url
 
+tester = ({ctx}) ->
+  if ctx.JSZip? =>
+    console.log "JSZip running test"
+    zip = new ctx.JSZip!
+    zip.file \hello.txt, "world"
+    hdr = setTimeout (-> console.error "jszip generation timeout."), 2000
+    zip.generate-async {type: \blob}
+      .finally -> clearTimeout(hdr)
+      .then -> console.log "jszip generate succeeded."
+      .catch -> console.error "jszip generate failed."
+
+
 load = ({url}) ->
   scope.load(url.split(' ').filter(->it).map(->{url:it.trim!}))
     .then (ctx) ->
@@ -10,6 +22,7 @@ load = ({url}) ->
       view.get(\result).classList.toggle \text-success, true
       view.get(\result).classList.toggle \border-success, true
       view.get(\result).textContent = text
+      tester {ctx}
     .catch (e) ->
       view.get(\result).classList.toggle \border-danger, true
       view.get(\result).classList.toggle \text-danger, true
