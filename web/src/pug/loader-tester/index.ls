@@ -11,6 +11,13 @@ tester = ({ctx}) ->
       .finally -> clearTimeout(hdr)
       .then -> console.log "jszip generate succeeded."
       .catch -> console.error "jszip generate failed."
+  if ctx.message-test =>
+    Promise.resolve!
+      .then -> ctx.message-test.fire!
+      .then -> debounce 1000
+      .then -> ctx.message-test.revoke!
+      .then -> debounce 1000
+      .then -> ctx.message-test.fire!
 
 
 load = ({url}) ->
