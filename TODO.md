@@ -1,3 +1,0 @@
- - support different scoping approaches, e.g., 
-   - import ( ESModule )
-   - commonjs ( via require )
