@@ -5,11 +5,11 @@ rsp.registry ({name, version, path}) ->
 
 libs = [
   #* url: "/assets/dev/d3.v4.js"
-  #* name: "d3", version: "^4.0.0", path: "build/d3.min.js"
+  * name: "d3", version: "^4.0.0", path: "build/d3.min.js"
   #* name: "ldview", version: "0.2.7", path: "dist/index.min.js"
   * name: "ldview", version: "~0.1.0", path: "dist/index.min.js"
   #* name: "ldfile", version: "main", path: "dist/index.min.js"
-  #* name: "proxise", version: "^0.1.4", path: "dist/proxise.min.js"
+  * name: "proxise", version: "^0.1.4", path: "dist/proxise.min.js"
 ]
 
 bundle = ->
@@ -33,3 +33,8 @@ view = new ldview do
   action: click:
     download: -> bundle!
     loader: -> loader!
+  handler:
+    lib:
+      list: -> libs
+      view: text: "@": ({ctx}) -> JSON.stringify(ctx)
+

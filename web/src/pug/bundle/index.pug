@@ -3,13 +3,21 @@ block prehead
   base(href="/")
 block head
 block body
-  .w-102.rwd.mx-auto.my-4
-    .btn.btn-outline-secondary(ld="download") Download
-    br
-    .btn.btn-outline-secondary(ld="loader") Loader
+  .w-1024.rwd.mx-auto.my-4
+    p Following are libs to be tested for bundling/downloading and loading:
+    .d-flex.flex-column.g-2.bg-light.p-4.rounded
+      div(ld-each="lib")
+    .my-4: hr
+    .d-flex.g-2
+      .btn.btn-outline-secondary(ld="download") Download
+      .btn.btn-outline-secondary(ld="loader") Loader
 block script
-  +script("/assets/lib/@plotdb/semver/main/index.min.js")
-  +script("/assets/lib/ldview/main/index.min.js")
-  +script("/assets/lib/ldfile/main/index.min.js")
-  +script("/assets/tmp/bundle.js")
-  script: include:lsc index.ls
+  +script([
+    {name: "@plotdb/semver"},
+    {name: "@plotdb/rescope", version: "dev"},
+    {name: "@plotdb/rescope", version: "dev", path: "bundle.min.js"},
+    {name: "ldview"},
+    {name: "ldfile"},
+    {url: "/assets/tmp/bundle.js"}
+  ])
+  script(type="module"): include:lsc index.ls
