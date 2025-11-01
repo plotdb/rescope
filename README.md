@@ -1,6 +1,6 @@
 # @plotdb/rescope
 
-experimental project. Load and scope any external JavaScript and reload scope on demand. 
+Load and scope any external JavaScript and reload scope on demand.
 
 For example, assume here are the list of js url we'd like to load, which kept in `libs` variable:
 
@@ -144,6 +144,13 @@ the return value `ret` is the runnable JS string which insert cached libraries i
       }
     )
 
+## Bundling
+
+To bundle, load `bundle.js` and use `bundle` API:
+
+    rsp = new rescop(...)
+    rsp.bundle [{ ... }] .then (code) ->
+
 
 ## Polyfills
 
@@ -151,13 +158,6 @@ use `prejs` when constructing for inserting pre-required JS into both host and d
 
     new rescope({prejs: ["https://...", ...]});
 
-
-## TODO
-
- - Browser compatibility check
-   - works in all major browsers ( latest Chrome, Firefox, Safari, Opera, Edge )
-   - doesn't work in IE11
- - Performance benchmark
 
 
 ## Note
@@ -171,7 +171,12 @@ use `prejs` when constructing for inserting pre-required JS into both host and d
 
 rescope uses proxy object to replace global objects such as `global`, `self`, `window` and `this`, so accessing `global` in library will actually be accessing the proxy object.
 
-However, there are still ways to get the actual window object, such as from `event.source` of `message` event:
+However, there are still ways to get the actual window object, such as `window.parent` or `event.source`.
+
+
+### Event.source
+
+`event.source` in `message` event can be used to determine the source window of an event::
 
     global.fire("message", "hello");
     global.on("message", function(event) { event.source });
@@ -180,7 +185,22 @@ Some libraries check `event.source` before using it like:
 
     if(event.source == global) { ... }
 
-Unfortunately this will fail, since `event.source` (the real global) is not the same with `global` (the proxy object).  Since proxy object should never be equivalent to the proxied object, this can't be solved in `@plotdb/rescope` side - libraries will have to be patched if we want to use them in `@plotdb/rescope`.
+This will fail since `event.source` (the real global) is not the same with `global` (the proxy object), since proxy object should never be equivalent to the proxied object.
+
+We intercepte `event` to patch `source` by overriding `onmessage`, `addEventListener` and `removeEventListener`, however `onmessage` is native bridge and can't be run within proxy getter, so we solve it by adding a `queueMicrotask` in order to set `onmessage` in the correct realm, which introduced asynchronous behavior of onmessage. Since it's for messages which is also asynchronous actions, this won't cause too much trouble.
+
+
+### window.parent
+
+TBD
+
+
+## TODO
+
+ - Browser compatibility check
+   - works in all major browsers ( latest Chrome, Firefox, Safari, Opera, Edge )
+   - doesn't work in IE11
+ - Performance benchmark
 
 
 ## Resources
