@@ -30,10 +30,27 @@ proxin = (o = {})->
     doc.body.appendChild ifr
   attr = Object.fromEntries(Reflect.ownKeys(@iframe.contentWindow).map -> [it, true])
   func = {}
+  unwrapped = {}
+  wrapped = {}
+  wm = new WeakMap!
   @_proxy = new Proxy (o.target or win), do
     get: (t, k, o) ~>
       if @lc[k]? => return @lc[k]
       if func[k]? => return func[k]
+      if unwrapped[k]? => return unwrapped[k]
+      if wrapped[k]? => return wrapped[k]
+      # intercept addEventListener to forge event.source
+      if k == \addEventListener =>
+        return wrapped[k] = (n, ocb) ~>
+          if n != \message => return (o.target or win).addEventListener n, ocb
+          (o.target or win).addEventListener n, ncb = (evt) ~>
+            Object.defineProperty evt, 'source', do
+              value: @_proxy, writable: false, configurable: true
+            ocb.apply @_proxy, arguments
+          wm.set ocb, ncb
+      # since we wrap user cb, we have to take care of it when user want to remove it.
+      if k == \removeEventListener =>
+        return wrapped[k] = (n, ocb) ~> (o.target or win).removeEventListener n, wm.get(ocb) or ocb
       if typeof(t[k]) == \function =>
         # NOTE: bound function doesn't contain original prototype and some other properties.
         # for example, webpack uses Symbol.prototype, and highcharts uses Node.TEXT_NODE.
@@ -44,7 +61,7 @@ proxin = (o = {})->
         # old code keeps here for reference.
         #ret = func[k] = (t[k].bind t) <<< t[k] # `<<<` doesn't work as expected
         #ret.prototype = t[k].prototype         # we still have to manually assign.
-        f = Reflect.get(t,k,o)
+        try f = Reflect.get(t,k,o) catch e => return f = t[k]
         ret = func[k] = new Proxy(
           f.bind(t),
           {get: (d, g, o) -> Reflect.get((if g in d => d else f), g, o)}
@@ -58,6 +75,18 @@ proxin = (o = {})->
           var-setter.on(v.k, v.f)
           return true
         var-setter.fire k, v
+      # intercept onmessage to forge event.source
+      if k == \onmessage =>
+        f = (v) ~> (evt) ~>
+          Object.defineProperty evt, 'source', do
+            value: @_proxy, writable: false, configurable: true
+          if v => v.call @_proxy, evt
+        # we store original value so we can return it to user when getter is call
+        unwrapped[k] = v
+        # onmessage is kinda native bridge / host setter only allowed in global realm
+        # so we need global realm to set it
+        queueMicrotask -> t[k] = f v
+        return true
       if attr[k] =>
         t[k] = v
         return true

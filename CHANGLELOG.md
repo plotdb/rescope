@@ -1,5 +1,11 @@
 # Change Logs
 
+## v5.0.16
+
+ - fix bug: scoping caused unexpected behavior when library check `event.source == window`,
+   where here `event.source` is the real window object, but `window` is our proxy object.
+
+
 ## v5.0.15
 
  - use Proxy + Reflect to replace `<<<` for preparing function attributes inaccessible due to `bind`

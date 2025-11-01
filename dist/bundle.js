@@ -37,7 +37,7 @@ _fetch = function(u, c){
   });
 };
 proxin = function(o){
-  var ifr, ref$, attr, func, varSetter, this$ = this;
+  var ifr, ref$, attr, func, unwrapped, wrapped, wm, varSetter, this$ = this;
   o == null && (o = {});
   this.lc = o.context || {};
   this.id = Math.random().toString(36).substring(2);
@@ -61,17 +61,53 @@ proxin = function(o){
     return [it, true];
   }));
   func = {};
+  unwrapped = {};
+  wrapped = {};
+  wm = new WeakMap();
   this._proxy = new Proxy(o.target || win, {
     get: function(t, k, o){
-      var f, ret;
+      var f, e, ret;
       if (this$.lc[k] != null) {
         return this$.lc[k];
       }
       if (func[k] != null) {
         return func[k];
       }
+      if (unwrapped[k] != null) {
+        return unwrapped[k];
+      }
+      if (wrapped[k] != null) {
+        return wrapped[k];
+      }
+      if (k === 'addEventListener') {
+        return wrapped[k] = function(n, ocb){
+          var ncb;
+          if (n !== 'message') {
+            return (o.target || win).addEventListener(n, ocb);
+          }
+          (o.target || win).addEventListener(n, ncb = function(evt){
+            Object.defineProperty(evt, 'source', {
+              value: this$._proxy,
+              writable: false,
+              configurable: true
+            });
+            return ocb.apply(this$._proxy, arguments);
+          });
+          return wm.set(ocb, ncb);
+        };
+      }
+      if (k === 'removeEventListener') {
+        return wrapped[k] = function(n, ocb){
+          return (o.target || win).removeEventListener(n, wm.get(ocb)) || ocb;
+        };
+      }
       if (typeof t[k] === 'function') {
-        f = Reflect.get(t, k, o);
+        try {
+          f = Reflect.get(t, k, o);
+        } catch (e$) {
+          e = e$;
+          return f = t[k];
+        }
         ret = func[k] = new Proxy(f.bind(t), {
           get: function(d, g, o){
             return Reflect.get(in$(g, d) ? d : f, g, o);
@@ -85,12 +121,32 @@ proxin = function(o){
       return t[k];
     },
     set: function(t, k, v){
+      var f;
       if (enableRspvarsetcb) {
         if (k === '_rspvarsetcb_') {
           varSetter.on(v.k, v.f);
           return true;
         }
         varSetter.fire(k, v);
+      }
+      if (k === 'onmessage') {
+        f = function(v){
+          return function(evt){
+            Object.defineProperty(evt, 'source', {
+              value: this$._proxy,
+              writable: false,
+              configurable: true
+            });
+            if (v) {
+              return v.call(this$._proxy, evt);
+            }
+          };
+        };
+        unwrapped[k] = v;
+        queueMicrotask(function(){
+          return t[k] = f(v);
+        });
+        return true;
       }
       if (attr[k]) {
         t[k] = v;
