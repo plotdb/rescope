@@ -3,7 +3,7 @@
   "name": "@plotdb/rescope",
   "license": "MIT",
   "description": "rescope your code with any JS libraries",
-  "version": "5.0.16",
+  "version": "5.0.17",
   "homepage": "https://github.com/plotdb/rescope",
   "files": [
     "dist/**/*"

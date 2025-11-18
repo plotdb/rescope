@@ -104,6 +104,9 @@ proxin = function(o){
       }
       if (k === 'removeEventListener') {
         return wrapped[k] = function(n, ocb){
+          if (n !== 'message') {
+            return (o.target || win).removeEventListener(n, ocb);
+          }
           return (o.target || win).removeEventListener(n, wm.get(ocb)) || ocb;
         };
       }

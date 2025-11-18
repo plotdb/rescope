@@ -1,5 +1,10 @@
 # Change Logs
 
+## v5.0.17
+
+ - fix bug: removeEventListener isn't working, due to asymmetry in eventListener wrapper
+
+
 ## v5.0.16
 
  - fix bug: scoping caused unexpected behavior when library check `event.source == window`,

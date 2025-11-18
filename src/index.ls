@@ -50,7 +50,9 @@ proxin = (o = {})->
           wm.set ocb, ncb
       # since we wrap user cb, we have to take care of it when user want to remove it.
       if k == \removeEventListener =>
-        return wrapped[k] = (n, ocb) ~> (o.target or win).removeEventListener n, wm.get(ocb) or ocb
+        return wrapped[k] = (n, ocb) ~>
+          if n != \message => return (o.target or win).removeEventListener n, ocb
+          (o.target or win).removeEventListener n, wm.get(ocb) or ocb
       if typeof(t[k]) == \function =>
         # NOTE: bound function doesn't contain original prototype and some other properties.
         # for example, webpack uses Symbol.prototype, and highcharts uses Node.TEXT_NODE.
