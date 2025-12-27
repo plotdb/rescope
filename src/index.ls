@@ -241,6 +241,13 @@ rsp.prototype = Object.create(Object.prototype) <<<
     var window, global, globalThis, self, __ret = {}; __win = {};
     window = global = globalThis = self = window = scope;
     """
+    # in nodejs we use env to prepare win,
+    # but loaded js may still access sth like `Element`, `docuemtn` directly, instead of `window.Element`
+    # in this case, we will have to manually prepare these variables.
+    # however, this can also be done by manually inject them into `global` by called.
+    # before we decide what's the best practice, we will keep this in comment for reference only.
+    # for k of win => if varre.exec(k) => code += "var #k = win['#k'];"
+
     # libs may set window.somevar then trying to access `somvar` as local var.
     # without monitoring `window.somvar` and when changed update `somevar`, local var will be undefined.
     # thus, we use `_rspvarsetcb_` as a special kw to notify Proxy to add a cb for `k`,
