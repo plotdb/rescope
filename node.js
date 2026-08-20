@@ -5,7 +5,7 @@ semver = typeof window != 'undefined' && window !== null
 fetch = typeof window != 'undefined' && window !== null
   ? window.fetch
   : (typeof module != 'undefined' && module !== null) && (typeof require != 'undefined' && require !== null) ? require("node-fetch") : null;
-fs = require('fs');var win, doc, enableRspvarsetcb, _fetch, proxin, ref$, rsp;
+fs = require('fs');var win, doc, enableRspvarsetcb, _fetch, proxin, ref$, rsp, slice$ = [].slice, arrayFrom$ = Array.from || function(x){return slice$.call(x);};
 enableRspvarsetcb = true;
 _fetch = function(u, c){
   if (rsp.__node && (typeof fs != 'undefined' && fs !== null) && !/^https?:/.exec(u)) {
@@ -43,7 +43,7 @@ _fetch = function(u, c){
   });
 };
 proxin = function(o){
-  var ifr, ref$, attr, func, unwrapped, wrapped, wm, varSetter, this$ = this;
+  var ifr, ref$, attr, func, unwrapped, wrapped, wm, evtProxy, varSetter, this$ = this;
   o == null && (o = {});
   this.lc = o.context || {};
   this.id = Math.random().toString(36).substring(2);
@@ -70,6 +70,22 @@ proxin = function(o){
   unwrapped = {};
   wrapped = {};
   wm = new WeakMap();
+  evtProxy = function(evt){
+    return new Proxy(evt, {
+      get: function(t, key){
+        var v;
+        if (key === 'source') {
+          return this$._proxy;
+        }
+        v = t[key];
+        if (typeof v === 'function') {
+          return v.bind(t);
+        } else {
+          return v;
+        }
+      }
+    });
+  };
   this._proxy = new Proxy(o.target || win, {
     get: function(t, k, o){
       var f, e, ret;
@@ -87,27 +103,34 @@ proxin = function(o){
       }
       if (k === 'addEventListener') {
         return wrapped[k] = function(n, ocb){
-          var ncb;
-          if (n !== 'message') {
-            return (o.target || win).addEventListener(n, ocb);
+          var rest, res$, i$, to$, ref$, ncb;
+          res$ = [];
+          for (i$ = 2, to$ = arguments.length; i$ < to$; ++i$) {
+            res$.push(arguments[i$]);
           }
-          (o.target || win).addEventListener(n, ncb = function(evt){
-            Object.defineProperty(evt, 'source', {
-              value: this$._proxy,
-              writable: false,
-              configurable: true
-            });
-            return ocb.apply(this$._proxy, arguments);
-          });
+          rest = res$;
+          if (n !== 'message') {
+            return (ref$ = o.target || win).addEventListener.apply(ref$, [n, ocb].concat(arrayFrom$(rest)));
+          }
+          ncb = function(evt){
+            return ocb.call(this$._proxy, evtProxy(evt));
+          };
+          (ref$ = o.target || win).addEventListener.apply(ref$, [n, ncb].concat(arrayFrom$(rest)));
           return wm.set(ocb, ncb);
         };
       }
       if (k === 'removeEventListener') {
         return wrapped[k] = function(n, ocb){
-          if (n !== 'message') {
-            return (o.target || win).removeEventListener(n, ocb);
+          var rest, res$, i$, to$, ref$;
+          res$ = [];
+          for (i$ = 2, to$ = arguments.length; i$ < to$; ++i$) {
+            res$.push(arguments[i$]);
           }
-          return (o.target || win).removeEventListener(n, wm.get(ocb)) || ocb;
+          rest = res$;
+          if (n !== 'message') {
+            return (ref$ = o.target || win).removeEventListener.apply(ref$, [n, ocb].concat(arrayFrom$(rest)));
+          }
+          return (ref$ = o.target || win).removeEventListener.apply(ref$, [n, wm.get(ocb) || ocb].concat(arrayFrom$(rest)));
         };
       }
       if (typeof t[k] === 'function') {
@@ -141,13 +164,8 @@ proxin = function(o){
       if (k === 'onmessage') {
         f = function(v){
           return function(evt){
-            Object.defineProperty(evt, 'source', {
-              value: this$._proxy,
-              writable: false,
-              configurable: true
-            });
             if (v) {
-              return v.call(this$._proxy, evt);
+              return v.call(this$._proxy, evtProxy(evt));
             }
           };
         };
