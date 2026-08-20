@@ -1,5 +1,16 @@
 # Change Logs
 
+## v5.0.18
+
+ - fix bug: forging `event.source` mutated the shared Event object, so the forged value leaked
+   to every `message` listener registered after ours. libraries identifying their own iframe
+   with `event.source == iframe.contentWindow` ( e.g. recaptcha ) then ignored their own
+   messages and hung. the event is now left untouched and the callback gets a proxied view.
+   this applies to both `addEventListener` and `onmessage`.
+ - fix bug: the options argument ( capture / once / passive / signal ) of `addEventListener`
+   and `removeEventListener` was dropped by the wrapper.
+
+
 ## v5.0.17
 
  - fix bug: removeEventListener isn't working, due to asymmetry in eventListener wrapper

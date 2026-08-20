@@ -33,26 +33,41 @@ proxin = (o = {})->
   unwrapped = {}
   wrapped = {}
   wm = new WeakMap!
+  # rescoped code expects `event.source` to be our proxy rather than the real window.
+  # we used to forge it with Object.defineProperty on the event object itself, but listeners
+  # on the same target share one Event instance and run in registration order, so the forged
+  # value leaked to every listener registered after ours. libraries identifying their own
+  # iframe with `evt.source == iframe.contentWindow` - recaptcha, for one - then stopped
+  # recognizing their own messages and silently hung. hand out a proxied view instead and
+  # leave the event untouched.
+  evt-proxy = (evt) ~>
+    new Proxy evt, do
+      get: (t, key) ~>
+        if key == \source => return @_proxy
+        v = t[key]
+        if typeof(v) == \function => v.bind t else v
+
   @_proxy = new Proxy (o.target or win), do
     get: (t, k, o) ~>
       if @lc[k]? => return @lc[k]
       if func[k]? => return func[k]
       if unwrapped[k]? => return unwrapped[k]
       if wrapped[k]? => return wrapped[k]
-      # intercept addEventListener to forge event.source
+      # intercept addEventListener to forge event.source. see `evt-proxy` above.
+      # `rest` carries the options argument ( capture / once / passive / signal ), which is
+      # silently dropped if we don't forward it.
       if k == \addEventListener =>
-        return wrapped[k] = (n, ocb) ~>
-          if n != \message => return (o.target or win).addEventListener n, ocb
-          (o.target or win).addEventListener n, ncb = (evt) ~>
-            Object.defineProperty evt, 'source', do
-              value: @_proxy, writable: false, configurable: true
-            ocb.apply @_proxy, arguments
+        return wrapped[k] = (n, ocb, ...rest) ~>
+          if n != \message => return (o.target or win).addEventListener n, ocb, ...rest
+          ncb = (evt) ~> ocb.call @_proxy, evt-proxy(evt)
+          (o.target or win).addEventListener n, ncb, ...rest
           wm.set ocb, ncb
       # since we wrap user cb, we have to take care of it when user want to remove it.
+      # options matter here too: removal only matches when `capture` is the same.
       if k == \removeEventListener =>
-        return wrapped[k] = (n, ocb) ~>
-          if n != \message => return (o.target or win).removeEventListener n, ocb
-          (o.target or win).removeEventListener n, wm.get(ocb) or ocb
+        return wrapped[k] = (n, ocb, ...rest) ~>
+          if n != \message => return (o.target or win).removeEventListener n, ocb, ...rest
+          (o.target or win).removeEventListener n, (wm.get(ocb) or ocb), ...rest
       if typeof(t[k]) == \function =>
         # NOTE: bound function doesn't contain original prototype and some other properties.
         # for example, webpack uses Symbol.prototype, and highcharts uses Node.TEXT_NODE.
@@ -77,12 +92,9 @@ proxin = (o = {})->
           var-setter.on(v.k, v.f)
           return true
         var-setter.fire k, v
-      # intercept onmessage to forge event.source
+      # intercept onmessage to forge event.source. see `evt-proxy` above.
       if k == \onmessage =>
-        f = (v) ~> (evt) ~>
-          Object.defineProperty evt, 'source', do
-            value: @_proxy, writable: false, configurable: true
-          if v => v.call @_proxy, evt
+        f = (v) ~> (evt) ~> if v => v.call @_proxy, evt-proxy(evt)
         # we store original value so we can return it to user when getter is call
         unwrapped[k] = v
         # onmessage is kinda native bridge / host setter only allowed in global realm
