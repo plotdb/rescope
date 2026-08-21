@@ -27,6 +27,7 @@
     "@loadingio/bootstrap.ext": "^0.0.12",
     "@loadingio/debounce.js": "^1.0.1",
     "@loadingio/ldquery": "^3.0.6",
+    "@plotdb/guides": "github:plotdb/guides#master",
     "@plotdb/pdmap-world": "^0.0.5",
     "@plotdb/semver": "^0.0.3",
     "@zbryikt/deploy": "^0.0.4",
