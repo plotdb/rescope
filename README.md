@@ -113,6 +113,13 @@ By default `rescope` uses iframe window to preload libraries and peek variables 
 
 Since v5.1.0 this window is created only when something actually has to be peeked, so it never appears for libraries loaded from a bundle ( their export names are already recorded ) nor under `scope: "with"`. `proxin` no longer creates one at all.
 
+**Note**: `delegate` and `useDelegateLib` below are not implemented in the current source - `proxin`
+reads `iframe` / `target`, and nothing reads either of these names. They are kept here as the record
+of an intended API; treat the rest of this section as a design note rather than as documentation of
+what the code does today. What does work for running libraries against another window is passing
+that window to `proxin` as `target` ( with its `iframe`, if it has one ), which is how
+`@plotdb/block` uses it.
+
 We specify an option `delegate` and set it to false to tell `@plotdb/rescope` that this instance doesn't use delegate ( itself is a delegate ):
 
     new rescope({delegate: false});
@@ -204,7 +211,8 @@ use `prejs` when constructing for inserting pre-required JS into both host and d
 
  - This is not meant to be used for sandboxing or for security reason. `@plotdb/rescope` never prevent any scripts from accessing document, and all scripts are still run in the main thread.
  - some libraries such as `d3` may check and use object with the name they are going to use if exists. Thus we always have to restore context in case of disrupt their initialization process.
- - rescope mimics `window` object but there are still limitations. If a library declares a variable by `window.somevar` but accessing it with `somevar`, it will fail.
+ - rescope mimics `window` object but there are still limitations. If a library declares a variable by `window.somevar` but accessing it with `somevar`, the wrapper keeps the two in sync for names it knows about ( the `_rspvarsetcb_` mechanism ), so this works for a library's own exports; a name it never declared and rescope never saw can still come out undefined. Under `scope: "with"` the question does not arise, since both spellings resolve through the same proxy.
+ - in the default mode a library can still see the host page's own globals as free identifiers - rescope only hides the names it is loading. `scope: "with"` hides all of them. See `doc/no-iframe.md`.
 
 
 ## Limitation
@@ -232,7 +240,13 @@ We intercepte `event` to patch `source` by overriding `onmessage`, `addEventList
 
 ### window.parent
 
-TBD
+In the default mode this is still open: `window` inside the wrapper is a local variable holding the
+proxy, but `window.parent` is answered by the real window, so a library that walks up from there
+reaches the host.
+
+`scope: "with"` closes it. Nothing declares `window` in that mode, so the proxy answers for the
+name itself, and it answers `window`, `self`, `globalThis`, `global`, `top`, `parent` and `frames`
+with itself. `window.parent === window` inside a scoped library, and the test suite pins that.
 
 
 ## Tests
