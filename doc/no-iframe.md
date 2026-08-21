@@ -175,22 +175,34 @@ This is a safe, self-contained change. `o.iframe` / `o.target` should stay, for 
 
 ## Role 2 - three ways out
 
-### (a) move the peek to build time
+### (a) peek once, at bundle time, wherever that happens to run
 
-Nothing says the peek has to happen in a browser. Node's `vm` module hands out a real fresh
-global for free:
+The peek needs a fresh global. What it does *not* need is to happen on every page load, in every
+visitor's browser. It only has to happen once per library version, and the result - a list of
+names - travels perfectly well inside the bundle.
 
-    vm.runInContext(code, ctx); Object.getOwnPropertyNames(global-of-ctx)
+Where that once happens is open, and both options work:
 
-Verified to produce the same `prop` lists as the iframe ( `marked` -> `marked`, `lodash` -> `_`,
-`moment` -> `moment` ); DOM-dependent libraries need the context populated from `jsdom`, which is
-already a devDependency. `bundle.ls` already serializes `{url, id, ns, name, version, path, code}`
-per library - adding `prop` costs a few bytes and lets `load` skip `_exports` entirely. For the
-bundled production path this removes the peek iframe *and* the double execution, with no change
-to how scoped code runs.
+ - **in the browser, in `bundle()`.** This is where bundling already runs: `web/src/pug/bundle/`
+   is a page with a Download button that calls `rsp.bundle(libs)` and saves `bundle.js`. It
+   currently passes `only-fetch = true` and so skips `_exports` entirely; letting the peek run
+   there and serializing `lib.prop` alongside `code` is the smaller change. The iframe is still
+   used - but once, by whoever builds the bundle, not by every visitor.
+ - **in node.** `vm.runInContext(code, ctx)` then `Object.getOwnPropertyNames` of that context's
+   global; verified to produce the same `prop` lists as the iframe ( `marked` -> `marked`,
+   `lodash` -> `_`, `moment` -> `moment` ). DOM-dependent libraries need the context populated
+   from `jsdom`, already a devDependency. This is the option to reach for if bundling ever moves
+   into CI.
 
-The commented-out block in `bundle.ls` was already heading this way, storing `gen` instead of
-`code`; `prop` is the smaller and more portable half of that idea.
+`bundle.ls` already serializes `{url, id, ns, name, version, path, code}` per library; adding
+`prop` costs a few bytes and lets `load` skip `_exports` whenever it is present. The commented-out
+block there was already heading this way, storing `gen` instead of `code` - `prop` is the smaller
+and more portable half of that idea.
+
+What this does **not** cover: a library loaded straight from a URL that was never bundled, which
+is the normal development case. That path still has no `prop` and still needs a runtime answer -
+either today's iframe peek or the `with` mode of option (c). So this is a fast path for the
+production build, not a replacement for the peek.
 
 ### (b) static analysis in the browser
 
@@ -365,15 +377,19 @@ Staged, so each step stands alone:
 1. **Drop the `proxin` iframe now.** Derive `attr` from the host window as above, cache the result
    at module level ( it does not change ), keep `o.iframe` / `o.target` for deliberate delegates.
    Verified identical behavior; removes two thirds of the iframes and all per-`load` iframe cost.
-2. **Record `prop` in the cache and bundle format.** Compute it offline with `vm`/`jsdom`, skip
-   `_exports` whenever `lib.prop` is already known. The bundled path then runs with no iframe and
-   no double execution, and scoped code keeps today's speed.
+2. **Record `prop` in the cache and bundle format** ( option (a) of `Role 2` above ). Compute it
+   once when the bundle is built - in `bundle()` as it runs today, or in node with `vm` - and skip
+   `_exports` whenever `lib.prop` is already known. A page loading a bundle then creates no iframe
+   and runs each library once, with scoped code keeping today's speed. Libraries loaded from a
+   bare URL still fall through to a runtime peek, so this shrinks the iframe's job rather than
+   ending it.
 3. **Name the generated wrapper with `//# sourceURL` and stop using the `Function` constructor**
    ( `Debugging` above ). Two small changes in `_wrap`, no design impact, and they turn every stack
    trace and breakpoint from unusable into identical to a plain script load.
-4. **Deliver the wrapper as a script rather than compiling it** ( `Getting off eval` above ), so a
-   host with a strict CSP does not have to grant `'unsafe-eval'` to use rescope. Under
-   nonce + `strict-dynamic` this costs the host nothing at all.
+4. **Deliver the wrapper as a script rather than compiling it** - option (1) of
+   `Getting off eval` above: the same wrapper, put in a `Blob` and loaded through a script
+   element, so a host with a strict CSP does not have to grant `'unsafe-eval'` to use rescope.
+   Under nonce + `strict-dynamic` this costs the host nothing at all.
 5. **Add an opt-in `with`-based mode** ( e.g. `new rescope({scope: 'with'})`, or a per-lib flag in
    the cache entry ) for the cases the other two cannot cover: an unbundled library on a page where
    no `prop` is known, environments with no DOM at all ( workers ), or hosts that must not create
