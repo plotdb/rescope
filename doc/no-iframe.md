@@ -57,12 +57,33 @@ is why `doc/spec.md` has to warn that `fprop` must not be used in the host windo
 `frame-src 'none'` is *not* a reason to do this: CSP does not apply to `about:blank` iframes, and
 stock rescope was verified to still work under that policy.
 
-The CSP directive that does matter is `unsafe-eval`. Under `script-src 'self' 'unsafe-inline'`,
-`new Function` throws `EvalError` and **stock rescope fails outright** - `_wrap` cannot compile
-anything. That is true today, before any of the changes below, and it is equally true for every
-option in this document, since all of them generate code at run time. Anything that must run under
-a no-`unsafe-eval` policy needs a different design altogether ( pre-compiled wrappers shipped as
-real script files ), not a different scoping trick.
+The CSP directive that does matter is `unsafe-eval`, and the way it matters is worth stating
+plainly: **a page that adopts rescope has to allow `'unsafe-eval'` in its own `script-src`**.
+rescope fetches library source as text and turns it into code with `new Function` ( `_wrap` ) and
+`iw.eval` ( `_exports` ); the peek iframe does not help, since a same-origin `about:blank` frame
+inherits the parent's policy. Under `script-src 'self' 'unsafe-inline'` both paths throw
+`EvalError` and stock rescope fails outright. This is a constraint rescope imposes on the host
+site, it exists today, and it is unchanged by anything else in this document - every option here
+generates code at run time.
+
+There is a narrower way to buy the same capability, verified in Chromium:
+
+| policy | `new Function` | wrapper delivered as a `blob:` script |
+|---|---|---|
+| none | works | works |
+| `script-src 'self' 'unsafe-inline'` | `EvalError` | blocked |
+| `script-src 'self' 'unsafe-inline' blob:` | `EvalError` | **works** - marked loaded, scoped, exports captured |
+
+Instead of compiling the wrapper from a string, put it in a `Blob` and load it as a script:
+
+    (function(scope, win){ with(scope){ /* library code */ } })(window.__rsp[id].scope, window);
+
+The scoping is identical - only the delivery changes. The host then allows `blob:` rather than
+`'unsafe-eval'`, which is a much smaller grant ( only blobs the page itself creates can run, and
+many sites already allow `blob:` for workers ), and it composes with a nonce + `strict-dynamic`
+policy. The costs are that execution becomes asynchronous, and that load errors surface as a
+script `error` event instead of a thrown exception. Worth offering as an option for hosts with a
+strict policy; not worth making the default.
 
 
 ## Role 1 is removable, with no behavior change
