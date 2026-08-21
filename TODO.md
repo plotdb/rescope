@@ -1,3 +1,4 @@
  - support different scoping approaches, e.g., 
    - import ( ESModule )
    - commonjs ( via require )
+ - drop the iframes. see `doc/no-iframe.md` for the analysis and `dev/noframe.js` for a prototype.
