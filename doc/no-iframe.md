@@ -66,24 +66,80 @@ inherits the parent's policy. Under `script-src 'self' 'unsafe-inline'` both pat
 site, it exists today, and it is unchanged by anything else in this document - every option here
 generates code at run time.
 
-There is a narrower way to buy the same capability, verified in Chromium:
+There are ways out of that, and they are worth separating from the iframe question - see
+**Getting off `eval`** below.
 
-| policy | `new Function` | wrapper delivered as a `blob:` script |
-|---|---|---|
-| none | works | works |
-| `script-src 'self' 'unsafe-inline'` | `EvalError` | blocked |
-| `script-src 'self' 'unsafe-inline' blob:` | `EvalError` | **works** - marked loaded, scoped, exports captured |
 
-Instead of compiling the wrapper from a string, put it in a `Blob` and load it as a script:
+## Getting off `eval`
+
+Loading is not what needs `eval` here. The browser is perfectly capable of loading a script; what
+rescope needs `eval` for is *substituting the global* while it runs. Once that is clear, the
+question becomes which delivery mechanism can hand a library a different global without turning a
+string into code through the eval API.
+
+Measured in Chromium, four ways of running the same `marked`, under three policies:
+
+| | no CSP | `nonce` + `strict-dynamic` | `script-src 'self' 'unsafe-inline'` |
+|---|---|---|---|
+| `new Function` ( today ) | works | **EvalError** | **EvalError** |
+| wrapper as a `blob:` / `data:` script | works | **works** | blocked ( needs `blob:` in the policy ) |
+| `import()` of an ESM build | works | works | works |
+| plain `<script src>` + save/restore | works | works | works |
+
+### (1) deliver the wrapper as a script instead of compiling it
+
+Same wrapper, same `with(scope)`, same proxy - only the delivery changes:
 
     (function(scope, win){ with(scope){ /* library code */ } })(window.__rsp[id].scope, window);
 
-The scoping is identical - only the delivery changes. The host then allows `blob:` rather than
-`'unsafe-eval'`, which is a much smaller grant ( only blobs the page itself creates can run, and
-many sites already allow `blob:` for workers ), and it composes with a nonce + `strict-dynamic`
-policy. The costs are that execution becomes asynchronous, and that load errors surface as a
-script `error` event instead of a thrown exception. Worth offering as an option for hosts with a
-strict policy; not worth making the default.
+put in a `Blob`, loaded through a script element the page creates. CSP sees a script load, not
+`eval`. Under a modern nonce + `strict-dynamic` policy this needs **no extra grant at all** -
+`strict-dynamic` trusts scripts created by already-trusted scripts, and both `blob:` and `data:`
+URLs were verified to run there while `new Function` was blocked. Under an older allowlist policy
+the host adds `blob:`, which is far narrower than `'unsafe-eval'` and is often already there for
+workers.
+
+Be honest about what this buys: it is a *policy* win, not a sandbox win - the page is still
+choosing to run code it fetched. What it removes is the blanket "any string, anywhere, can become
+code" grant that `'unsafe-eval'` hands to every other script on the page, including an injected
+one. The costs are that execution becomes asynchronous, and that a failure arrives as a script
+`error` event rather than a thrown exception.
+
+This keeps every capability rescope has today.
+
+### (2) `import()` an ESM build - no code generation anywhere
+
+For a library that ships ESM, the module system already does the scoping, for free:
+
+    m1 = await import('./marked.esm.js?a')
+    m2 = await import('./marked.esm.js?b')
+
+Verified: `m1.marked !== m2.marked` - two independent instances of the same library - both working,
+and `window.marked` stays `undefined`. No iframe, no proxy, no `with`, no `eval`, no host
+pollution to hide or restore, and it runs under every policy tested including
+`script-src 'self'`.
+
+The limits are real: the library must ship an ESM build; bare-specifier dependencies need an import
+map; the context comes from module exports rather than from globals a script leaked, so `ctx`
+semantics change; and a second instance means a second URL. This is the `import ( ESModule )` line
+already sitting in `TODO.md`, and it is worth noting that it settles the iframe question, the
+`eval` question and the `with` question in one move - for the subset of libraries that can use it.
+
+### (3) plain `<script src>` with save / restore - zero code generation, and a real regression
+
+Load the library normally, diff `window` before and after, move the new globals into `ctx`, put the
+old ones back. Verified to work under every policy. But this is the pre-v1.0.0 design, and the
+CHANGELOG says why it was abandoned: the library runs against the *real* window, so anything it
+does asynchronously - a timer, a callback, a fetch handler - executes after the restore and sees
+the wrong globals. Two versions cannot be live at the same time either, only alternated. It is the
+only option that needs nothing from the host page, and it gives up the guarantee rescope exists to
+provide.
+
+### what to take from this
+
+(1) is the pragmatic answer - it keeps everything and drops the `'unsafe-eval'` requirement, which
+matters if rescope is meant to be embeddable in sites with a strict policy. (2) is the better
+long-term answer wherever the library can be an ES module. (3) is a fallback that costs too much.
 
 
 ## Role 1 is removable, with no behavior change
@@ -258,12 +314,15 @@ Staged, so each step stands alone:
 2. **Record `prop` in the cache and bundle format.** Compute it offline with `vm`/`jsdom`, skip
    `_exports` whenever `lib.prop` is already known. The bundled path then runs with no iframe and
    no double execution, and scoped code keeps today's speed.
-3. **Add an opt-in `with`-based mode** ( e.g. `new rescope({scope: 'with'})`, or a per-lib flag in
+3. **Deliver the wrapper as a script rather than compiling it** ( `Getting off eval` above ), so a
+   host with a strict CSP does not have to grant `'unsafe-eval'` to use rescope. Under
+   nonce + `strict-dynamic` this costs the host nothing at all.
+4. **Add an opt-in `with`-based mode** ( e.g. `new rescope({scope: 'with'})`, or a per-lib flag in
    the cache entry ) for the cases the other two cannot cover: an unbundled library on a page where
    no `prop` is known, environments with no DOM at all ( workers ), or hosts that must not create
    frames. It is also the correct fallback when a library turns out to define globals at run time.
    Document the run-time cost so nobody enables it for a hot library like `moment` by accident.
-4. **Keep an iframe only for what genuinely needs a second document** - the `useDelegateLib`
+5. **Keep an iframe only for what genuinely needs a second document** - the `useDelegateLib`
    behavior described in the README ( which, note, is not implemented in the current `src/index.ls`
    at all; only `proxin`'s `o.iframe` / `o.target` survives ).
 
