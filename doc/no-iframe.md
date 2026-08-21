@@ -57,6 +57,13 @@ is why `doc/spec.md` has to warn that `fprop` must not be used in the host windo
 `frame-src 'none'` is *not* a reason to do this: CSP does not apply to `about:blank` iframes, and
 stock rescope was verified to still work under that policy.
 
+The CSP directive that does matter is `unsafe-eval`. Under `script-src 'self' 'unsafe-inline'`,
+`new Function` throws `EvalError` and **stock rescope fails outright** - `_wrap` cannot compile
+anything. That is true today, before any of the changes below, and it is equally true for every
+option in this document, since all of them generate code at run time. Anything that must run under
+a no-`unsafe-eval` policy needs a different design altogether ( pre-compiled wrappers shipped as
+real script files ), not a different scoping trick.
+
 
 ## Role 1 is removable, with no behavior change
 
@@ -187,6 +194,37 @@ Implementation notes for this route:
    and fall through to `Function('return this')()`, i.e. the real window, when it fails. Returning
    the real value for intrinsic names keeps the two identities equal; hoisting them as locals
    without doing so makes it worse, since then the local and the trap disagree by construction.
+
+
+### is `with` going to be taken away?
+
+MDN labels `with` deprecated, so the question is fair - but the label records the ES5 ( 2009 )
+decision to forbid it in strict mode, not a removal plan. Where things actually stand:
+
+ - `with` is in the main body of the ECMAScript spec ( `WithStatement` ), not in Annex B where the
+   legacy/discouraged web features live. Removing it would mean removing sloppy mode, which is the
+   parse mode every classic `<script>` still starts in.
+ - the strict-mode ban has been the whole of the deprecation for sixteen years; there is no TC39
+   proposal to go further, and "don't break the web" makes one unlikely.
+ - the ecosystem would break loudly. Checked locally: **Vue 3.4's in-browser build emits
+   `with (_ctx) { … }`** from its template compiler - in `vue.global.js` *and* `vue.global.prod.js` -
+   and **lodash's `_.template` generates `with (obj) { … }`**. SES / Endo and LavaMoat ( MetaMask )
+   build their compartments on `with` + `Proxy` as well. A browser that drops `with` breaks Vue and
+   MetaMask on the same day.
+
+Two practical points that make the exposure smaller than it looks:
+
+ - the `with` never appears in rescope's own source. It is assembled into a string inside `_wrap`
+   at run time, so no bundler or minifier ever parses it, and no toolchain can reject it.
+ - a `Function` constructor body is always parsed as sloppy code, whatever the caller is. Verified:
+   `new Function('o', 'with(o){ return a + b }')` works when created from an ES module and from a
+   `"use strict"` script, while a literal `with` in strict code is a `SyntaxError` as expected. So
+   the wrapper stays valid no matter how rescope itself gets bundled.
+
+And should the worst happen, the blast radius is one code generator: `with` is a per-wrapper
+codegen choice, so falling back to the `prop`-based wrapper is a runtime flag, not a rewrite. Steps
+1 and 2 of the recommendation below do not use `with` at all - which is the main reason they come
+first.
 
 
 ## Recommendation
