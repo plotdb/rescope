@@ -8,6 +8,11 @@ rsp.prototype.bundle = (libs = {}) ->
     .map -> hash[it.id] = it
   libs = [v for k,v of hash]
   @load(libs, null, true, true).then ~>
+    # find the export names once, here, and record them. a page loading this bundle then knows them
+    # up front and never has to run the library an extra time - nor create the peek iframe - just to
+    # rediscover what it defines. this is the one place where paying for the peek is fine, since it
+    # happens when the bundle is built rather than on every visit. see doc/no-iframe.md.
+    @exports {libs}
     codes = libs
       .filter -> it.code
       .map (o) ~>
@@ -17,5 +22,5 @@ rsp.prototype.bundle = (libs = {}) ->
         code = @_wrap o, {}, code-only: true
         """{#{if o.url => "url: '#{o.url}'," else ''}id: '#{o.id}',gen: #code}"""
         */
-        JSON.stringify(o{url, id, ns, name, version, path, code})
+        JSON.stringify(o{url, id, ns, name, version, path, code} <<< {prop: Object.keys(o.prop or {})})
     Promise.resolve "[#{codes.join(',')}].forEach(function(o){rescope.cache(o);})"

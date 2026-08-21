@@ -111,6 +111,8 @@ By default all script are loaded asynchronously. You can force them loaded in sy
 
 By default `rescope` uses iframe window to preload libraries and peek variables they defined. The iframe is called delegate window. Apparently behavior for the host and the delegate is not the same.
 
+Since v5.1.0 this window is created only when something actually has to be peeked, so it never appears for libraries loaded from a bundle ( their export names are already recorded ) nor under `scope: "with"`. `proxin` no longer creates one at all.
+
 We specify an option `delegate` and set it to false to tell `@plotdb/rescope` that this instance doesn't use delegate ( itself is a delegate ):
 
     new rescope({delegate: false});
@@ -125,6 +127,40 @@ Even with `useDelegateLib` set to true, you can still enter host context by sett
 
     res = new rescope({useDelegateLib: true});
     res.context("some-lib", false, function() { ... });
+
+## Scoping Mode
+
+By default, `rescope` learns which names a library defines by running it once in a separate window
+( the peek ), then pre-declares those names in the wrapper it builds around the library. Set
+`scope` to `with` to skip that step entirely:
+
+    new rescope({scope: "with"});
+
+The library then runs inside `with(scope)`, so every free identifier - including its own top level
+`var` declarations - resolves through the scope proxy. Nothing has to be discovered in advance, so
+no extra window is created and the library runs once instead of twice. It also isolates better:
+the host page's own globals stay invisible to the library, and `window.parent` no longer reaches
+the real window.
+
+The cost is library run time. Every function inside a `with` block loses fast variable lookup for
+its whole lifetime - a `moment` formatting loop measured about 3x slower. Use it where load time
+and isolation matter more than throughput, or where no window can be created at all.
+
+## Delivery
+
+By default the wrapper around a library is compiled with `eval`. Set `delivery` to `script` to have
+it handed to a script element through a blob URL instead:
+
+    new rescope({delivery: "script"});
+
+The page's Content Security Policy then sees a script load rather than `eval`. Note this only
+covers the wrapper: to run with no `'unsafe-eval'` grant at all, the peek has to go too, so combine
+it with `scope: "with"` or with a bundle that carries `prop` ( see below ). With that combination
+rescope was verified to run under `script-src 'nonce-…' 'strict-dynamic'` and under
+`script-src 'self' 'unsafe-inline' blob:`.
+
+Loading becomes asynchronous in this mode, and if the policy blocks the blob the load rejects with
+a message saying which grant is missing.
 
 ## Caching
 
@@ -150,6 +186,10 @@ To bundle, load `bundle.js` and use `bundle` API:
 
     rsp = new rescop(...)
     rsp.bundle [{ ... }] .then (code) ->
+
+The bundle records each library's export names alongside its code. A page loading the bundle
+therefore already knows them, and skips the peek: it creates no extra window and runs each library
+once rather than twice.
 
 
 ## Polyfills

@@ -5,6 +5,10 @@ and what it costs. Every number below was measured in headless Chromium against 
 libraries ( `marked@7`, `d3@6`, `jszip@3.10`, `lodash@4.17`, `moment@2.29`, `vue@2.7` ); the
 prototype used for the measurements is in `dev/noframe.js`.
 
+**Status: steps 1-5 of the recommendation are implemented as of v5.1.0** - see the CHANGELOG. What
+follows is the reasoning and the measurements behind them, kept as the record of why the design is
+what it is. Where the text says "would", read "does" for those five.
+
 
 ## Where the iframes are today
 
@@ -98,6 +102,18 @@ put in a `Blob`, loaded through a script element the page creates. CSP sees a sc
 URLs were verified to run there while `new Function` was blocked. Under an older allowlist policy
 the host adds `blob:`, which is far narrower than `'unsafe-eval'` and is often already there for
 workers.
+
+One catch, measured with the shipped implementation: changing the delivery is **not enough on its
+own**, because the peek pass has an `eval` of its own ( `iw.eval` in `_exports` ). Getting off
+`'unsafe-eval'` completely means combining `delivery: 'script'` with something that removes the
+peek:
+
+| policy | `delivery: 'eval'` | `'script'` + peek | `'script'` + `scope: 'with'` | `'script'` + bundled `prop` |
+|---|---|---|---|---|
+| none | ok | ok | ok | ok |
+| `nonce` + `strict-dynamic` | EvalError | EvalError | **ok** | **ok** |
+| `'self' 'unsafe-inline' blob:` | EvalError | EvalError | **ok** | **ok** |
+| `'self' 'unsafe-inline'` | EvalError | EvalError | blocked, with a message saying so | blocked, same |
 
 Be honest about what this buys: it is a *policy* win, not a sandbox win - the page is still
 choosing to run code it fetched. What it removes is the blanket "any string, anywhere, can become

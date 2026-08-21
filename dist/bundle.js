@@ -37,29 +37,17 @@ _fetch = function(u, c){
   });
 };
 proxin = function(o){
-  var ifr, ref$, attr, func, unwrapped, wrapped, wm, evtProxy, varSetter, this$ = this;
+  var ref$, attr, intrinsic, func, unwrapped, wrapped, wm, evtProxy, varSetter, this$ = this;
   o == null && (o = {});
   this.lc = o.context || {};
   this.id = Math.random().toString(36).substring(2);
+  this.mode = o.mode || 'default';
   if (o.iframe) {
     this.iframe = o.iframe;
-  } else {
-    this.iframe = ifr = doc.createElement('iframe');
-    ref$ = ifr.style;
-    ref$.position = 'absolute';
-    ref$.top = 0;
-    ref$.left = 0;
-    ref$.width = 0;
-    ref$.height = 0;
-    ref$.pointerEvents = 'none';
-    ref$.opacity = 0;
-    ifr.setAttribute('title', "rescope script loader");
-    ifr.setAttribute('name', "pdb-proxin-" + this.id);
-    doc.body.appendChild(ifr);
   }
-  attr = Object.fromEntries(Reflect.ownKeys(this.iframe.contentWindow).map(function(it){
-    return [it, true];
-  }));
+  ref$ = proxin.nativeKeys(o.iframe
+    ? o.iframe.contentWindow
+    : o.target || win), attr = ref$.attr, intrinsic = ref$.intrinsic;
   func = {};
   unwrapped = {};
   wrapped = {};
@@ -81,10 +69,28 @@ proxin = function(o){
     });
   };
   this._proxy = new Proxy(o.target || win, {
+    has: function(t, k){
+      if (this$.mode === 'with') {
+        return true;
+      } else {
+        return Reflect.has(t, k);
+      }
+    },
     get: function(t, k, o){
       var f, e, ret;
+      if (this$.mode === 'with') {
+        if (k === Symbol.unscopables) {
+          return undefined;
+        }
+        if (proxin.selfKeys[k]) {
+          return this$._proxy;
+        }
+      }
       if (this$.lc[k] != null) {
         return this$.lc[k];
+      }
+      if (intrinsic[k]) {
+        return t[k];
       }
       if (func[k] != null) {
         return func[k];
@@ -132,7 +138,10 @@ proxin = function(o){
           f = Reflect.get(t, k, o);
         } catch (e$) {
           e = e$;
-          return f = t[k];
+          f = void 8;
+        }
+        if (typeof f !== 'function') {
+          f = t[k];
         }
         ret = func[k] = new Proxy(f.bind(t), {
           get: function(d, g, o){
@@ -208,38 +217,90 @@ proxin = function(o){
   };
   return this;
 };
+proxin.nativeRe = /\{\s*\[native code\]\s*\}/;
+proxin.nativeExtra = ['chrome'];
+proxin.selfKeys = {
+  window: true,
+  self: true,
+  globalThis: true,
+  global: true,
+  top: true,
+  parent: true,
+  frames: true
+};
+proxin.keysCache = new WeakMap();
+proxin.nativeKeys = function(w){
+  var ret, ref$, attr, intrinsic, p, i$, len$, k, d;
+  if (ret = proxin.keysCache.get(w)) {
+    return ret;
+  }
+  ref$ = [{}, {}], attr = ref$[0], intrinsic = ref$[1];
+  p = Object.getPrototypeOf(w);
+  while (p) {
+    for (i$ = 0, len$ = (ref$ = Reflect.ownKeys(p)).length; i$ < len$; ++i$) {
+      k = ref$[i$];
+      attr[k] = true;
+    }
+    p = Object.getPrototypeOf(p);
+  }
+  for (i$ = 0, len$ = (ref$ = Reflect.ownKeys(w)).length; i$ < len$; ++i$) {
+    k = ref$[i$];
+    if (!(d = Object.getOwnPropertyDescriptor(w, k))) {
+      continue;
+    }
+    if (d.get || d.set) {
+      attr[k] = true;
+    } else if (!d.enumerable) {
+      attr[k] = true;
+      if (typeof d.value === 'function') {
+        intrinsic[k] = true;
+      }
+    } else if (typeof d.value === 'function' && proxin.nativeRe.exec(Function.prototype.toString.call(d.value))) {
+      attr[k] = true;
+    }
+  }
+  for (i$ = 0, len$ = (ref$ = proxin.nativeExtra).length; i$ < len$; ++i$) {
+    k = ref$[i$];
+    attr[k] = true;
+  }
+  proxin.keysCache.set(w, ret = {
+    attr: attr,
+    intrinsic: intrinsic
+  });
+  return ret;
+};
 proxin.prototype = (ref$ = Object.create(Object.prototype), ref$.proxy = function(){
   return this._proxy;
 }, ref$.ctx = function(){
   return this.lc;
 }, ref$);
 rsp = function(o){
-  var ifr, ref$;
   o == null && (o = {});
   this.id = Math.random().toString(36).substring(2);
-  this.iframe = ifr = doc.createElement('iframe');
   this._cache = {};
+  this._scope = o.scope || 'default';
+  this._delivery = o.delivery || 'eval';
+  this._preloads = o.preloads || [];
   this.proxy = new proxin();
   this.registry(o.registry || "/assets/lib/");
-  ref$ = ifr.style;
-  ref$.position = 'absolute';
-  ref$.top = 0;
-  ref$.left = 0;
-  ref$.width = 0;
-  ref$.height = 0;
-  ref$.pointerEvents = 'none';
-  ref$.opacity = 0;
-  ifr.setAttribute('title', "rescope script loader");
-  ifr.setAttribute('name', "pdb-rescope-" + this.id);
-  doc.body.appendChild(ifr);
-  ifr.contentWindow.document.body.innerHTML = (o.preloads || []).map(function(it){
-    return "<script type=\"text/javascript\" src=\"" + it + "\"></script>";
-  }).join('');
   return this;
 };
 rsp.env = function(it){
   var ref$;
   return ref$ = [it, it.document], win = ref$[0], doc = ref$[1], ref$;
+};
+rsp.sourceUrl = function(src){
+  if (src) {
+    return "\n//# sourceURL=" + src;
+  } else {
+    return '';
+  }
+};
+rsp.compile = function(code, src){
+  if (win && typeof win.eval === 'function') {
+    return win.eval("(function(scope, ctx, win){" + code + "})" + rsp.sourceUrl(src));
+  }
+  return new Function("scope", "ctx", "win", code);
 };
 rsp.prop = {
   legacy: {
@@ -258,12 +319,27 @@ rsp._ver = {
   map: {},
   list: {}
 };
+rsp.genRegistry = '__rescope_gen__';
 rsp.cache = function(o){
-  var that, k, nv, p, s, ret, n, v, ref$, i$, to$, i, ver;
+  var k, that, nv, p, s, ret, n, v, ref$, i$, to$, i, ver;
   if (typeof o === 'string') {
     o = {
       url: o
     };
+  }
+  if (Array.isArray(o.prop)) {
+    import$(o, {
+      prop: Object.fromEntries((function(){
+        var i$, ref$, len$, results$ = [];
+        for (i$ = 0, len$ = (ref$ = o.prop).length; i$ < len$; ++i$) {
+          k = ref$[i$];
+          results$.push([k, null]);
+        }
+        return results$;
+      }())),
+      propCached: true,
+      propIniting: true
+    });
   }
   if (!o.id) {
     o.id = rsp.id(o);
@@ -365,14 +441,40 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
     return that;
   }
   return this._cache[o.id] = rsp.cache(o);
+}, ref$.ifr = function(){
+  var that, ifr, ref$;
+  if (that = this.iframe) {
+    return that;
+  }
+  this.iframe = ifr = doc.createElement('iframe');
+  ref$ = ifr.style;
+  ref$.position = 'absolute';
+  ref$.top = 0;
+  ref$.left = 0;
+  ref$.width = 0;
+  ref$.height = 0;
+  ref$.pointerEvents = 'none';
+  ref$.opacity = 0;
+  ifr.setAttribute('title', "rescope script loader");
+  ifr.setAttribute('name', "pdb-rescope-" + this.id);
+  doc.body.appendChild(ifr);
+  ifr.contentWindow.document.body.innerHTML = this._preloads.map(function(it){
+    return "<script type=\"text/javascript\" src=\"" + it + "\"></script>";
+  }).join('');
+  return ifr;
 }, ref$.exports = function(o){
-  var ctx, libs, ref$, hash, iw, k, results$ = [];
+  var ctx, libs, ref$, hash, iw, k, this$ = this, results$ = [];
   o == null && (o = {});
   ctx = o.ctx || {};
   libs = typeof o.libs === 'string'
     ? [o.libs]
     : o.libs || [];
-  ref$ = [{}, this.iframe.contentWindow], hash = ref$[0], iw = ref$[1];
+  if (libs.every(function(lib){
+    return this$.cache(lib).propCached;
+  })) {
+    return;
+  }
+  ref$ = [{}, this.ifr().contentWindow], hash = ref$[0], iw = ref$[1];
   for (k in ctx) {
     hash[k] = iw[k];
     iw[k] = ctx[k];
@@ -390,7 +492,10 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
     return;
   }
   lib = this.cache(lib);
-  ref$ = [{}, lib.fprop, this.iframe.contentWindow], hash = ref$[0], fprop = ref$[1], iw = ref$[2];
+  if (lib.propCached) {
+    return this._exports(libs, idx + 1, ctx);
+  }
+  ref$ = [{}, lib.fprop, this.ifr().contentWindow], hash = ref$[0], fprop = ref$[1], iw = ref$[2];
   if (!fprop) {
     lib.fprop = fprop = {};
     lib.prop = {};
@@ -449,19 +554,32 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
   for (k in fprop) {
     ctx[k] = fprop[k];
   }
-  this._exports(libs, idx + 1);
+  this._exports(libs, idx + 1, ctx);
   for (k in fprop) {
     results$.push(iw[k] = hash[k]);
   }
   return results$;
+}, ref$._wrapWith = function(o, ctx, opt){
+  var code;
+  o == null && (o = {});
+  ctx == null && (ctx = {});
+  opt == null && (opt = {});
+  code = "with(scope){" + o.code + "\n}";
+  if (opt.codeOnly) {
+    return "function(scope, ctx, win){" + code + "}";
+  }
+  return rsp.compile(code, o.url || o.id);
 }, ref$._wrap = function(o, ctx, opt){
   var varre, prop, code, _, k;
   o == null && (o = {});
   ctx == null && (ctx = {});
   opt == null && (opt = {});
+  if ((opt.scope || this._scope) === 'with') {
+    return this._wrapWith(o, ctx, opt);
+  }
   varre = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
   prop = o.prop || {};
-  code = "var window, global, globalThis, self, __ret = {}; __win = {};\nwindow = global = globalThis = self = window = scope;";
+  code = "var window, global, globalThis, self, __ret = {}, __win = {}; window = global = globalThis = self = scope;";
   _ = !enableRspvarsetcb
     ? function(){}
     : function(k){
@@ -479,19 +597,58 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
       code += "var " + k + " = window['" + k + "'];" + _(k);
     }
   }
-  code += o.code + ";";
+  code += "try {" + o.code + ";";
   for (k in prop) {
     if (varre.exec(k)) {
-      code += "if(!(" + k + ")) { " + k + " = scope['" + k + "']; }\n__ret['" + k + "'] = " + k + " || window['" + k + "'] || win['" + k + "'] || this['" + k + "'];\nwin['" + k + "'] = __win['" + k + "'];";
+      code += "if(!(" + k + ")) { " + k + " = scope['" + k + "']; }\n__ret['" + k + "'] = " + k + " || window['" + k + "'] || win['" + k + "'] || this['" + k + "'];";
     } else {
-      code += "__ret['" + k + "'] = window['" + k + "'] || win['" + k + "'] || this['" + k + "'];\nwin['" + k + "'] = __win['" + k + "'];";
+      code += "__ret['" + k + "'] = window['" + k + "'] || win['" + k + "'] || this['" + k + "'];";
     }
   }
-  code += "return __ret;";
+  code += "} finally {";
+  for (k in prop) {
+    code += "win['" + k + "'] = __win['" + k + "'];";
+  }
+  code += "}return __ret;";
   if (opt.codeOnly) {
     return "function(scope, ctx, win){" + code + "}";
   }
-  return new Function("scope", "ctx", "win", code);
+  return rsp.compile(code, o.url || o.id);
+}, ref$._gen = function(lib, ctx){
+  var that, code, id, reg, body, url;
+  if (that = lib.gen) {
+    return Promise.resolve(that);
+  }
+  if (this._delivery !== 'script' || rsp.__node || !doc) {
+    return Promise.resolve(lib.gen = this._wrap(lib, ctx));
+  }
+  code = this._wrap(lib, ctx, {
+    codeOnly: true
+  });
+  id = this.id + "-" + Math.random().toString(36).substring(2);
+  reg = win[rsp.genRegistry] = win[rsp.genRegistry] || {};
+  body = "window['" + rsp.genRegistry + "']['" + id + "'] = " + code + ";" + rsp.sourceUrl(lib.url || lib.id);
+  url = URL.createObjectURL(new Blob([body], {
+    type: 'text/javascript'
+  }));
+  return new Promise(function(res, rej){
+    var node, done;
+    node = doc.createElement('script');
+    done = function(e){
+      var gen, ref$;
+      node.remove();
+      URL.revokeObjectURL(url);
+      if (!(gen = reg[id])) {
+        return rej((ref$ = new Error("[@plotdb/rescope] wrapper script blocked or failed for " + lib.id + ". with `delivery: 'script'` the page's CSP has to allow `blob:` in script-src, or use a nonce with 'strict-dynamic'."), ref$.name = 'lderror', ref$.id = 403, ref$));
+      }
+      delete reg[id];
+      return res(lib.gen = gen);
+    };
+    node.onload = done;
+    node.onerror = done;
+    node.src = url;
+    return doc.body.appendChild(node);
+  });
 }, ref$.load = function(libs, dctx, forceFetch, onlyFetch){
   var px, ctx, proxy, segs, _, this$ = this;
   dctx == null && (dctx = {});
@@ -506,7 +663,9 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
     ? libs.px
     : libs.px = dctx && dctx.p
       ? dctx.p
-      : new proxin();
+      : new proxin({
+        mode: this._scope
+      });
   ctx = px.ctx();
   proxy = px.proxy();
   /*
@@ -549,19 +708,59 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
       }
     });
     return Promise.all(ps).then(function(){
+      var i$, ref$, len$, lib;
       if (onlyFetch) {
         return;
       }
-      this$.exports({
-        libs: libs,
-        ctx: dctx.f
-      });
-      return libs.map(function(lib){
-        if (lib.propIniting) {
-          if (!lib.gen) {
-            lib.gen = this$._wrap(lib, ctx);
+      if (this$._scope === 'with') {
+        for (i$ = 0, len$ = (ref$ = libs).length; i$ < len$; ++i$) {
+          lib = ref$[i$];
+          if (!lib.gen && !lib.prop) {
+            lib.prop = {};
+            lib.propIniting = true;
           }
-          lib.prop = lib.gen.apply(proxy, [proxy, ctx, win]);
+        }
+      } else {
+        this$.exports({
+          libs: libs,
+          ctx: dctx.f
+        });
+      }
+      return Promise.all(libs.map(function(lib){
+        if (lib.propIniting) {
+          return this$._gen(lib, ctx);
+        } else {
+          return Promise.resolve();
+        }
+      }));
+    }).then(function(){
+      if (onlyFetch) {
+        return;
+      }
+      return libs.map(function(lib){
+        var seen, k;
+        if (lib.propIniting) {
+          if (this$._scope !== 'with') {
+            lib.prop = lib.gen.apply(proxy, [proxy, ctx, win]);
+          } else {
+            seen = Object.fromEntries((function(){
+              var results$ = [];
+              for (k in ctx) {
+                results$.push([k, true]);
+              }
+              return results$;
+            }()));
+            lib.gen.apply(proxy, [proxy, ctx, win]);
+            lib.prop = Object.fromEntries((function(){
+              var results$ = [];
+              for (k in ctx) {
+                if (!seen[k]) {
+                  results$.push([k, ctx[k]]);
+                }
+              }
+              return results$;
+            }()));
+          }
           lib.propIniting = false;
         }
         return import$(ctx, lib.prop);
@@ -628,6 +827,9 @@ function in$(x, xs){
   libs = res$;
   return this.load(libs, null, true, true).then(function(){
     var codes;
+    this$.exports({
+      libs: libs
+    });
     codes = libs.filter(function(it){
       return it.code;
     }).map(function(o){
@@ -635,7 +837,8 @@ function in$(x, xs){
       code = @_wrap o, {}, code-only: true
       """{#{if o.url => "url: '#{o.url}'," else ''}id: '#{o.id}',gen: #code}"""
       */
-      return JSON.stringify({
+      var ref$;
+      return JSON.stringify((ref$ = {
         url: o.url,
         id: o.id,
         ns: o.ns,
@@ -643,7 +846,7 @@ function in$(x, xs){
         version: o.version,
         path: o.path,
         code: o.code
-      });
+      }, ref$.prop = Object.keys(o.prop || {}), ref$));
     });
     return Promise.resolve("[" + codes.join(',') + "].forEach(function(o){rescope.cache(o);})");
   });
