@@ -109,6 +109,18 @@ async function run() {
       await page.close();
     }
 
+    // ---- load order inside one batch ----------------------------------------------------------
+    group('load order');
+    {
+      const {page} = await open();
+      const r = await call(page, 'loadOrder');
+      for (const label of ['default', 'with', 'script']) {
+        eq(r[label].atLoad, 'provided', `${label}: a lib sees the one before it in the same load`);
+        eq(r[label].later, 'provided', `${label}: and still sees it after the load`);
+      }
+      await page.close();
+    }
+
     // ---- two versions at once ---------------------------------------------------------------------
     group('versions');
     if (!has('marked4')) skip('two versions side by side', 'marked4 not installed ( npm alias )');

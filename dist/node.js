@@ -732,45 +732,39 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
           ctx: dctx.f
         });
       }
-      return Promise.all(libs.map(function(lib){
-        if (lib.propIniting) {
-          return this$._gen(lib, ctx);
-        } else {
-          return Promise.resolve();
-        }
-      }));
-    }).then(function(){
-      if (onlyFetch) {
-        return;
-      }
-      return libs.map(function(lib){
-        var seen, k;
-        if (lib.propIniting) {
-          if (this$._scope !== 'with') {
-            lib.prop = lib.gen.apply(proxy, [proxy, ctx, win]);
-          } else {
-            seen = Object.fromEntries((function(){
-              var results$ = [];
-              for (k in ctx) {
-                results$.push([k, true]);
-              }
-              return results$;
-            }()));
-            lib.gen.apply(proxy, [proxy, ctx, win]);
-            lib.prop = Object.fromEntries((function(){
-              var results$ = [];
-              for (k in ctx) {
-                if (!seen[k]) {
-                  results$.push([k, ctx[k]]);
-                }
-              }
-              return results$;
-            }()));
+      return libs.reduce(function(p, lib){
+        return p.then(function(){
+          if (!lib.propIniting) {
+            return import$(ctx, lib.prop);
           }
-          lib.propIniting = false;
-        }
-        return import$(ctx, lib.prop);
-      });
+          return this$._gen(lib, ctx).then(function(gen){
+            var seen, k;
+            if (this$._scope !== 'with') {
+              lib.prop = gen.apply(proxy, [proxy, ctx, win]);
+            } else {
+              seen = Object.fromEntries((function(){
+                var results$ = [];
+                for (k in ctx) {
+                  results$.push([k, true]);
+                }
+                return results$;
+              }()));
+              gen.apply(proxy, [proxy, ctx, win]);
+              lib.prop = Object.fromEntries((function(){
+                var results$ = [];
+                for (k in ctx) {
+                  if (!seen[k]) {
+                    results$.push([k, ctx[k]]);
+                  }
+                }
+                return results$;
+              }()));
+            }
+            lib.propIniting = false;
+            return import$(ctx, lib.prop);
+          });
+        });
+      }, Promise.resolve());
     }).then(function(){
       return ctx;
     }).then(function(){

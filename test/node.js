@@ -39,6 +39,22 @@ async function run() {
     if (mode === 'with') eq(frames() - before, 0, "node/with: creates no iframe");
     else note(`node/default created ${frames() - before} iframe ( the peek window, shared )`);
   }
+
+  // one `load` call, two libraries, the second reading the first's export by bare name. the real
+  // guard for this is in the browser half - under jsdom the name leaks onto the host window
+  // anyway, so this passes either way. it is here to keep the node path honest about the shape.
+  for (const mode of ['default', 'with']) {
+    rescope._cache = {}; rescope._ver = {map: {}, list: {}};
+    const rsp = new rescope({
+      registry: o => require('path').join(__dirname, 'fixtures', `${o.name}.js`),
+      scope: mode,
+    });
+    try {
+      const ctx = await rsp.load([{name: 'provider'}, {name: 'consumer'}]);
+      eq(ctx.consumer && ctx.consumer.atLoad, 'provided', `node/${mode}: a lib sees the one before it in the batch`);
+      eq(ctx.consumer && ctx.consumer.later(), 'provided', `node/${mode}: and still sees it after the load`);
+    } catch (e) { ok(String(e).split('\n')[0].slice(0, 120), `node/${mode}: load order`); }
+  }
 }
 
 module.exports = {run};

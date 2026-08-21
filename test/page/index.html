@@ -118,6 +118,25 @@ window.isolation = async function(){
   return out;
 };
 
+// ---- one load call, a library reading the one before it ---------------------------------------
+// the web demo's own shape: functest.js calls ldcover, both loaded in a single `load`. the
+// wrapper's prologue declares the names that were in the context when it was compiled, so a lib
+// has to be compiled after the ones before it have run.
+window.loadOrder = async function(){
+  var out = {};
+  for (var i = 0; i < 3; i++) {
+    var opt = [{scope: 'default'}, {scope: 'with'}, {delivery: 'script'}][i];
+    var label = ['default', 'with', 'script'][i];
+    reset();
+    try {
+      var ctx = await make(opt).load([{url: '/fixtures/provider.js'}, {url: '/fixtures/consumer.js'}]);
+      out[label] = {atLoad: ctx.consumer && ctx.consumer.atLoad,
+                    later: ctx.consumer && ctx.consumer.later()};
+    } catch (e) { out[label] = {error: String(e).slice(0, 140)} }
+  }
+  return out;
+};
+
 // ---- two versions of one library, live at the same time ---------------------------------------
 window.versions = async function(){
   reset();

@@ -7,7 +7,7 @@ came out of.
     branch  claude/design-remove-iframe-xz5xar
     version 5.1.0 ( was 5.0.18 )
     state   steps 1-5 shipped and green. step 6 and the ESM path are open.
-    verify  ./build && npm test        -> 65 passed, 0 failed
+    verify  ./build && npm test        -> 75 passed, 0 failed
 
 
 ## the problem this task started from
@@ -44,6 +44,14 @@ Full reasoning and measurements: `doc/no-iframe.md`. Short version:
    script load rather than `eval`.
 5. **`scope: 'with'`** runs the library inside `with(scope)`: no peek, no iframe at all, and host
    globals stop leaking into scoped code. Opt-in, because it costs ~3x library run time.
+
+One more, found by running `web/` ( `npm start` ) rather than the suite: `load` had been changed to
+compile every wrapper in the batch up front, because `delivery: 'script'` is asynchronous. A
+wrapper's prologue declares the names the context held **when it was compiled**, so that handed
+every lib in a batch an empty context and any lib reading an earlier one by bare name saw
+undefined - the demo page's `functest.js` calling `ldcover` went dead, and with it the whole page.
+`load` now compiles and runs one lib at a time, in order; the `load order` group in the suite
+covers it in all three of `default`, `with` and `delivery: 'script'`.
 
 Bugs fixed on the way, all with tests: intrinsics handed out as bound wrappers ( `global.Object ===
 Object` was false, which is why **lodash could not load and clobbered the host's `window._`** );
@@ -88,6 +96,10 @@ Each of these cost a debugging session. They are commented at their site too.
  - **`has` may not return false for a non-configurable own property of the target.** `document`,
    `location`, `top`, `window` are non-configurable on a real window, so they cannot be hidden from
    the `with` object while the proxy target is that window.
+ - **A wrapper is compiled against the context as it stands at that moment.** `_wrap` writes one
+   `var` per name in `ctx`, so a lib must be compiled only after every lib before it in the same
+   `load` has run and merged its exports. Compiling the batch up front - tempting, since
+   `delivery: 'script'` is asynchronous - gives them all an empty context.
  - **Restores belong in `finally`.** A throwing library used to leave the host page's globals
    blanked.
  - **`prop-cached` is what keeps a bundled page at zero iframes.** `exports` returns early when
@@ -108,7 +120,7 @@ In the order I would take them.
    verified. That removes the peek, the `eval` and the `with` in one move, for the subset of
    libraries that can use it. `ctx` semantics change ( module exports rather than leaked globals ),
    so it needs a design pass first.
-3. **`rsp.dual-context` does not carry the scope mode** ( `src/index.ls:509` - `new proxin!` with no
+3. **`rsp.dual-context` does not carry the scope mode** ( `src/index.ls:515` - `new proxin!` with no
    `{mode}` ). A caller using `dual-context` together with `scope: 'with'` gets a default-mode
    proxin. Small, but it is a real hole.
 4. **Host globals still leak in the default mode.** Only `scope: 'with'` closes it, since free

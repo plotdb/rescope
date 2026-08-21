@@ -25,6 +25,10 @@ a component mounted.
    same place a plain `<script src>` reports. And a library that throws while loading must leave the
    host page's globals as it found them.
  - **isolation** - what scoped code can see of the host page, in both modes.
+ - **load order** - one `load` call with two libraries, the second reading the first's export as a
+   bare name - the web demo's own shape, where `functest.js` calls `ldcover`. Each wrapper's
+   prologue only declares the names the context held when it was compiled, so compiling a batch
+   before any of it has run leaves every lib blind to the ones before it.
  - **versions** - two versions of one library live at once, behaving like their own version.
  - **native key set** - the classification that replaced the pristine-iframe key list, checked both
    ways against a real iframe: no platform name missed, nothing the page defined mistaken for one.
@@ -41,7 +45,8 @@ a component mounted.
     node.js         the jsdom half
     browser.js      the browser half: assertions live here
     page/index.html the harness the browser half calls into
-    fixtures/       small libraries with known behaviour ( a known throw line, a probe )
+    fixtures/       small libraries with known behaviour ( a known throw line, a probe, a
+                    provider/consumer pair for load order )
     lib/            server, chromium lookup, library paths, pass/fail reporting
 
 Findings are recorded as `note` rather than an assertion where they are known limitations rather

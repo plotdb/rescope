@@ -477,20 +477,26 @@ rsp.prototype = Object.create(Object.prototype) <<<
             for lib in libs => if !lib.gen and !lib.prop => lib <<< {prop: {}, prop-initing: true}
           # libs carrying a `prop` from the bundle are skipped inside, iframe and all.
           else @exports {libs, ctx: dctx.f}
-          # compile first ( `delivery: 'script'` is asynchronous ), then run in order below.
-          Promise.all libs.map (lib) ~>
-            if lib.prop-initing => @_gen lib, ctx else Promise.resolve!
-        .then ~>
-          if only-fetch => return
-          libs.map (lib) ~>
-            if lib.prop-initing =>
-              if @_scope != \with => lib.prop = lib.gen.apply proxy, [proxy, ctx, win]
-              else
-                seen = Object.fromEntries [[k, true] for k of ctx]
-                lib.gen.apply proxy, [proxy, ctx, win]
-                lib.prop = Object.fromEntries [[k, ctx[k]] for k of ctx when !seen[k]]
-              lib.prop-initing = false
-            ctx <<< lib.prop
+          # compile and run one lib at a time, in order. the wrapper's prologue snapshots the
+          # names in `ctx` ( `for k of ctx` in `_wrap` ), so a lib has to be compiled only after
+          # every lib before it in the batch has run and merged its exports - compiling the whole
+          # batch up front hands each of them an empty ctx, and a lib referring to an earlier one
+          # ( ldcover to ldview, our own page's functest to ldcover ) sees undefined.
+          # `_gen` is a promise because `delivery: 'script'` is asynchronous; with the default
+          # `eval` delivery this chain settles entirely in microtasks, so libs still run back to
+          # back with nothing of the page's interleaved.
+          libs.reduce do
+            (p, lib) ~> p.then ~>
+              if !lib.prop-initing => return ctx <<< lib.prop
+              @_gen lib, ctx .then (gen) ~>
+                if @_scope != \with => lib.prop = gen.apply proxy, [proxy, ctx, win]
+                else
+                  seen = Object.fromEntries [[k, true] for k of ctx]
+                  gen.apply proxy, [proxy, ctx, win]
+                  lib.prop = Object.fromEntries [[k, ctx[k]] for k of ctx when !seen[k]]
+                lib.prop-initing = false
+                ctx <<< lib.prop
+            Promise.resolve!
         .then ~> ctx
         .then ~> _ idx + 1
     _ 0
