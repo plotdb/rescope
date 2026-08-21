@@ -14,7 +14,7 @@ what it is. Where the text says "would", read "does" for those five.
 
 There are two of them, and they serve unrelated purposes.
 
-### role 1 - the native key set ( `proxin`, `src/index.ls:26-33` )
+### role 1 - the native key set ( `proxin`, `src/index.ls:26-33` before v5.1.0 )
 
 `proxin` creates an iframe and immediately throws it away, except for one line:
 
@@ -28,7 +28,7 @@ assignment belongs on the real window or in the local context.
 Note the proxy target stays the host `win` - the iframe realm is never entered. One iframe is
 created per `proxin`, and `load` creates a `proxin` per call, so the count grows with usage.
 
-### role 2 - the export peek ( `rsp`, `src/index.ls:126-134`, `_exports` at `:203` )
+### role 2 - the export peek ( `rsp`, `src/index.ls:126-134`, `_exports` at `:203`, before v5.1.0 )
 
 `rsp` creates a second iframe and `_exports` runs the library inside it:
 
@@ -185,6 +185,14 @@ Swapping this in ( same `dist/index.js`, only `proxin` patched ) gave **identica
 identical functional results for all six libraries**, and cut the iframe count for the six-library
 run from 18 to 6.
 
+One behavioural difference did turn up later, and it is an improvement. Several window properties
+are `[Replaceable]`: `frames`, `length`, `self` and friends are accessors until a page assigns to
+them, and then they become ordinary data properties. A page that does `function frames(){ ... }`
+has replaced one. The iframe-derived list still called that name the platform's, so scoped code
+got handed the *page's* value; classifying the host window sees a page-defined function and hides
+it, which is what hiding host pollution is supposed to mean. The suite checks both directions -
+no platform name missed, nothing page-defined mistaken for one.
+
 This is a safe, self-contained change. `o.iframe` / `o.target` should stay, for callers such as
 `@plotdb/block` that pass a delegate window on purpose.
 
@@ -279,6 +287,11 @@ its whole lifetime. Binding the hot intrinsics ( `Math`, `Array`, `Date`, … ) 
 wrapper and answering `has` with `false` for them recovers only ~15% - the deopt, not the trap
 count, is what dominates.
 
+That last trick is measured in `dev/noframe.js` but **deliberately not in the shipped
+implementation**: ~15% does not pay for a `has` trap that has to lie, with the proxy invariants
+and the identity hazard below that come with it. It stays on the table if the run-time cost ever
+becomes the thing that matters.
+
 Implementation notes for this route:
 
  - `has` may not return `false` for a non-configurable own property of the target, so `document`,
@@ -361,6 +374,11 @@ So two rules:
  - **always append `//# sourceURL=<the library's real URL>`** to the generated wrapper. This is
    what turns the trace into a filename, and it registers the code in DevTools as a real source
    at that path, so breakpoints stick across reloads.
+ - **put a newline after the library's code before anything of your own.** Minified files
+   routinely end with `//# sourceMappingURL=...` and no trailing newline, so everything appended on
+   that line lands inside the comment - which cost us an unterminated `try` and a lost `return`
+   until the suite caught it on `moment`. A newline *after* the library cannot shift the lines it
+   reports; only what goes in front of it can.
  - **do not use the `Function` constructor** for the wrapper. It prepends its own
    `function anonymous(scope\n) {\n` header, which shifts every reported line by two. Indirect
    `eval` of a function expression - `(0, eval)('(function(scope, win){ … })')` - has no such
@@ -420,7 +438,7 @@ After 1 and 2, a production page that loads a bundle creates **zero iframes** an
 impossible, at a price that should be a deliberate choice.
 
 
-## Bugs found while measuring
+## Bugs found while measuring and implementing
 
  - **lodash does not load under stock rescope**, and takes the host's `window._` with it.
    `s.load('lodash.min.js')` rejects with `TypeError: Expected a function`, thrown out of lodash's
@@ -436,7 +454,14 @@ impossible, at a price that should be a deliberate choice.
    skips every restore - the host globals that were blanked for the run stay blanked.
    Wrapping the body in `try`/`finally` fixes it independently of anything in this document.
  - **Host globals leak into scoped code** for every name not in `lib.prop`, as shown in the
-   isolation table above.
+   isolation table above. Still true in the default mode; `scope: 'with'` is what closes it.
+ - **Anything appended after the library's code was at the mercy of a trailing line comment** - see
+   the debugging rules above.
+ - **`Reflect.get` is not always a safe way to read a property off the target.** jsdom implements
+   its interface objects ( `Node`, `Element`, `URL`, … ) as getters that only answer for a real
+   window and hand back `undefined` for any other receiver, so the proxy's function branch threw.
+   This one only became reachable *after* the intrinsic fix: lodash started actually using the
+   scope instead of escaping to the real window, and promptly touched those properties.
 
 
 ## Reproducing
@@ -451,3 +476,8 @@ a page that has some libraries to load:
 The measurements above come from driving that file plus stock `dist/index.js` in headless Chromium
 over the six libraries, comparing exports, functional behavior ( markdown rendered, zip generated,
 scale evaluated, component mounted ), iframe count and timing.
+
+Most of those comparisons now live in `test/` as assertions, so the claims in this document stay
+honest as the code moves: `./build && npm test`. The ones that are measurements rather than
+guarantees - iframe counts in the default mode, the host-global leak - are printed as notes there
+rather than asserted. See `test/README.md`.
