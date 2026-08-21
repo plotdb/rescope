@@ -304,6 +304,60 @@ codegen choice, so falling back to the `prop`-based wrapper is a runtime flag, n
 first.
 
 
+## Debugging: making the stack traces real
+
+Generated code debugs badly by default, and rescope is a good example of the problem. A library
+that throws today reports:
+
+    at boom (eval at ref$._wrap (index.js:494:10), <anonymous>:7:9)
+
+which names rescope's own internals, gives no library file, and reports line 7 for what is line 4
+of the library. The generated script also shows up in DevTools as a throwaway `VM123` entry, so
+breakpoints do not survive a reload.
+
+The fix is `//# sourceURL`, plus not using the one delivery that shifts line numbers. Same library
+throwing from its line 4, measured:
+
+| how the wrapper is run | reported |
+|---|---|
+| stock rescope | `eval at ref$._wrap (index.js:494:10), <anonymous>:7:9` |
+| `new Function`, no name | `eval at runNamed (…), <anonymous>:6:9` |
+| `new Function` + `sourceURL` | `libs/thrower.js:6:9` - right file, **two lines off** |
+| indirect `eval` + `sourceURL` | `libs/thrower.js:4:9` |
+| `blob:` script, no name | `blob:…-dfb5322dd12c:4:9` - right line, opaque file |
+| `blob:` script + `sourceURL` | `libs/thrower.js:4:9` |
+| plain `<script src>` ( reference ) | `libs/thrower.js:4:9` |
+
+So two rules:
+
+ - **always append `//# sourceURL=<the library's real URL>`** to the generated wrapper. This is
+   what turns the trace into a filename, and it registers the code in DevTools as a real source
+   at that path, so breakpoints stick across reloads.
+ - **do not use the `Function` constructor** for the wrapper. It prepends its own
+   `function anonymous(scope\n) {\n` header, which shifts every reported line by two. Indirect
+   `eval` of a function expression - `(0, eval)('(function(scope, win){ … })')` - has no such
+   header and reports the library's own line numbers. `blob:` script delivery is exact as well.
+   Either way the wrapper prologue has to stay on the *same line* as the library's first line.
+
+Two things follow from having a real script URL. Checked through `Debugger.scriptParsed`: the
+wrapper is registered with `url: libs/thrower.js` and carries the library's own
+`sourceMapURL: thrower.js.map` - so a minified library's source map resolves relative to the real
+library URL and DevTools can show original sources. Delivered as a bare blob without `sourceURL`,
+that same relative map reference would resolve against the `blob:` URL instead and break.
+
+Two smaller notes:
+
+ - the peek pass parses and runs every library a second time, so DevTools shows two copies of it
+   and a breakpoint hits twice. Dropping the peek ( step 2 below ) removes that too.
+ - loading one URL into two scopes produces two scripts with the same `sourceURL`. Appending the
+   scope id ( `…/d3.min.js?rescope=<id>` ) keeps them apart in the Sources tree without breaking
+   relative source map resolution.
+
+`dev/noframe.js` does both: it takes `opt.url`, emits `//# sourceURL`, and uses indirect eval for
+exactly this reason. Verified that a library loaded through it produces a stack trace identical to
+the same library loaded with a plain `<script src>`.
+
+
 ## Recommendation
 
 Staged, so each step stands alone:
@@ -314,15 +368,18 @@ Staged, so each step stands alone:
 2. **Record `prop` in the cache and bundle format.** Compute it offline with `vm`/`jsdom`, skip
    `_exports` whenever `lib.prop` is already known. The bundled path then runs with no iframe and
    no double execution, and scoped code keeps today's speed.
-3. **Deliver the wrapper as a script rather than compiling it** ( `Getting off eval` above ), so a
+3. **Name the generated wrapper with `//# sourceURL` and stop using the `Function` constructor**
+   ( `Debugging` above ). Two small changes in `_wrap`, no design impact, and they turn every stack
+   trace and breakpoint from unusable into identical to a plain script load.
+4. **Deliver the wrapper as a script rather than compiling it** ( `Getting off eval` above ), so a
    host with a strict CSP does not have to grant `'unsafe-eval'` to use rescope. Under
    nonce + `strict-dynamic` this costs the host nothing at all.
-4. **Add an opt-in `with`-based mode** ( e.g. `new rescope({scope: 'with'})`, or a per-lib flag in
+5. **Add an opt-in `with`-based mode** ( e.g. `new rescope({scope: 'with'})`, or a per-lib flag in
    the cache entry ) for the cases the other two cannot cover: an unbundled library on a page where
    no `prop` is known, environments with no DOM at all ( workers ), or hosts that must not create
    frames. It is also the correct fallback when a library turns out to define globals at run time.
    Document the run-time cost so nobody enables it for a hot library like `moment` by accident.
-5. **Keep an iframe only for what genuinely needs a second document** - the `useDelegateLib`
+6. **Keep an iframe only for what genuinely needs a second document** - the `useDelegateLib`
    behavior described in the README ( which, note, is not implemented in the current `src/index.ls`
    at all; only `proxin`'s `o.iframe` / `o.target` survives ).
 

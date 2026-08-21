@@ -115,10 +115,19 @@ function scopein(win, lc){
 
 // `with` needs sloppy mode. a "use strict" inside the library code is not a directive prologue
 // here, so it does not apply - the workaround in _exports is unnecessary in this mode.
-function run(code, sc, fast){
-  var head = '';
-  if (fast !== false) head = 'var ' + FAST.map(function(k){ return k + '=win.' + k }).join(',') + ';';
-  var fn = new Function('scope', 'win', head + 'with(scope){\n' + code + '\n}');
+//
+// opt.url: the library's real URL. appended as `//# sourceURL`, which is what makes stack traces
+// and breakpoints usable - see the debugging section of doc/no-iframe.md. indirect eval is used
+// rather than `new Function` because the Function constructor prepends its own header, which
+// shifts every reported line number by two; indirect eval reports the library's own lines.
+function run(code, sc, opt){
+  opt = opt || {};
+  var head = opt.fast === false ? ''
+    : 'var ' + FAST.map(function(k){ return k + '=win.' + k }).join(',') + ';';
+  // keep the header on the SAME line as the library's first line, or the offset comes back
+  var body = '(function(scope, win){' + head + 'with(scope){' + code + '\n}})' +
+    (opt.url ? '\n//# sourceURL=' + opt.url : '');
+  var fn = (0, eval)(body);
   return fn.call(sc.proxy, sc.proxy, sc.win || window);
 }
 
