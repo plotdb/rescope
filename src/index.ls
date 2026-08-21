@@ -376,7 +376,10 @@ rsp.prototype = Object.create(Object.prototype) <<<
     # the `win[k]` restores below used to sit plainly after the library's code, so a library that
     # threw skipped every one of them and left the host page's globals blanked. they belong in
     # `finally`. note this opening brace stays on the prologue line - see NOTE 3 above.
-    code += "try {#{o.code};"
+    # a newline after the library's code, before anything of ours: minified files routinely end with
+    # `//# sourceMappingURL=...` and no trailing newline, and everything we append would land inside
+    # that comment. ( a newline *after* the library can't shift the line numbers it reports. )
+    code += "try {#{o.code}\n;"
     for k of prop =>
       # either local variable, fake window obj, real window obj
       #   or possibly `this` variable if some libs use `this` as window object. ( yes, bad practice )

@@ -235,6 +235,14 @@ We intercepte `event` to patch `source` by overriding `onmessage`, `addEventList
 TBD
 
 
+## Tests
+
+    ./build && npm test
+
+Runs the suite in `test/` against `dist/` - six real libraries through every scoping and delivery
+mode, in chromium and under jsdom. See `test/README.md`.
+
+
 ## TODO
 
  - Browser compatibility check

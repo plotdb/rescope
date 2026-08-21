@@ -597,7 +597,7 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
       code += "var " + k + " = window['" + k + "'];" + _(k);
     }
   }
-  code += "try {" + o.code + ";";
+  code += "try {" + o.code + "\n;";
   for (k in prop) {
     if (varre.exec(k)) {
       code += "if(!(" + k + ")) { " + k + " = scope['" + k + "']; }\n__ret['" + k + "'] = " + k + " || window['" + k + "'] || win['" + k + "'] || this['" + k + "'];";

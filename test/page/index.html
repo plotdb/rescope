@@ -1,0 +1,181 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>rescope tests</title></head>
+<body>
+<script nonce="rescope">
+// the situation rescope exists for: a host page that already has its own copies of things, both
+// as a plain `var` global and on the window object.
+var hostVar = 'host var';
+window.marked = function(){ return 'HOST MARKED' };
+window._ = {chunk: function(){ return 'HOST LODASH' }};
+window.boomlib = 'HOST BOOMLIB';
+</script>
+<script nonce="rescope" src="/dist/index.js"></script>
+<script nonce="rescope" src="/dist/bundle.js"></script>
+<script nonce="rescope">
+'use strict';
+var LIBS = ['marked', 'd3', 'jszip', 'lodash', 'moment', 'vue'];
+var url = function(n){ return '/libs/' + n + '.js' };
+
+// what each library has to actually do once it has been scoped. loading without throwing proves
+// very little - jszip in particular only exercises its `message` plumbing when asked for a zip.
+var WORKS = {
+  marked: function(c){ var m = c.marked, out = (typeof m === 'function' ? m : m.parse)('# hi');
+    return /<h1/.test(out) || 'rendered ' + out },
+  d3: function(c){ var v = c.d3.scaleLinear().domain([0, 1]).range([0, 10])(0.5);
+    var s = c.d3.select(document.body).append('span').text('x'); s.remove();
+    return v === 5 || 'scale gave ' + v },
+  jszip: function(c){ var z = new c.JSZip(); z.file('a.txt', 'hello');
+    return z.generateAsync({type: 'string'}).then(function(s){ return (!!s && s.length > 0) || 'empty zip' }) },
+  lodash: function(c){ if (!c._) return 'no export';
+    var r = c._.chunk([1, 2, 3, 4], 2);
+    return (r && r.length === 2 && r[0][1] === 2) || 'chunk gave ' + JSON.stringify(r) },
+  moment: function(c){ var d = c.moment('2020-03-04').format('YYYY-MM');
+    return d === '2020-03' || 'formatted ' + d },
+  vue: function(c){ var vm = new c.Vue({data: {a: 1}, render: function(h){ return h('div', String(this.a)) }});
+    var el = document.createElement('div'); document.body.appendChild(el); vm.$mount(el);
+    var t = vm.$el.textContent; vm.$destroy(); vm.$el.remove();
+    return t === '1' || 'rendered ' + t }
+};
+
+function frameCount(){ return document.querySelectorAll('iframe').length }
+function reset(){ rescope._cache = {}; rescope._ver = {map: {}, list: {}} }
+function make(opt){ return new rescope(Object.assign({registry: function(o){ return o.url }}, opt || {})) }
+
+// ---- load every library through one set of options -------------------------------------------
+window.loadAll = async function(opt){
+  reset();
+  var before = frameCount(), out = {libs: {}};
+  for (var i = 0; i < LIBS.length; i++) {
+    var name = LIBS[i], s = make(opt);
+    try {
+      var ctx = await s.load([{url: url(name)}]);
+      var ok = WORKS[name](ctx);
+      out.libs[name] = {exports: Object.keys(ctx), works: (ok && ok.then) ? await ok : ok};
+    } catch (e) { out.libs[name] = {error: String(e).slice(0, 140)} }
+  }
+  out.frames = frameCount() - before;
+  out.hostIntact = {marked: window.marked() === 'HOST MARKED', lodash: window._.chunk() === 'HOST LODASH'};
+  // the generated wrapper used to leak these onto the real window
+  out.wrapperLeak = [typeof window.__win, typeof window.__ret].filter(function(t){ return t !== 'undefined' });
+  return out;
+};
+
+// ---- bundle, then load from the bundle in a fresh instance ------------------------------------
+window.bundleRoundTrip = async function(){
+  reset();
+  var code = await make().bundle(LIBS.map(function(n){ return {url: url(n)} }));
+  reset();
+  var before = frameCount();
+  (0, eval)(code);                       // this is what a page including bundle.js does
+  var s = make(), out = {recordsProp: /"prop":\[/.test(code), libs: {}};
+  for (var i = 0; i < LIBS.length; i++) {
+    var name = LIBS[i];
+    try {
+      var ctx = await s.load([{url: url(name)}]);
+      var ok = WORKS[name](ctx);
+      out.libs[name] = {exports: Object.keys(ctx), works: (ok && ok.then) ? await ok : ok};
+    } catch (e) { out.libs[name] = {error: String(e).slice(0, 140)} }
+  }
+  out.frames = frameCount() - before;
+  return out;
+};
+
+// ---- stack traces, and the restore a throwing library used to skip ----------------------------
+window.debuggability = async function(){
+  var out = {};
+  for (var i = 0; i < 2; i++) {
+    var mode = i ? 'with' : 'default';
+    reset();
+    var ctx = await make({scope: mode}).load([{url: '/fixtures/boom.js'}]);
+    try { ctx.boomlib.run(); out['trace_' + mode] = '(did not throw)' }
+    catch (e) { out['trace_' + mode] = e.stack.split('\n')[1].trim() }
+  }
+  // reference: the same library loaded the ordinary way
+  await new Promise(function(res){
+    var s = document.createElement('script');
+    s.nonce = 'rescope'; s.onload = res; s.onerror = res; s.src = '/fixtures/boom.js';
+    document.body.appendChild(s);
+  });
+  try { window.boomlib.run() } catch (e) { out.trace_plainScript = e.stack.split('\n')[1].trim() }
+  window.boomlib = 'HOST BOOMLIB';
+
+  reset();
+  out.throwingLoad = await make().load([{url: '/fixtures/thrower.js'}]).then(
+    function(){ return '(resolved)' }, function(e){ return 'rejected' });
+  out.hostRestoredAfterThrow = window.boomlib === 'HOST BOOMLIB';
+  return out;
+};
+
+// ---- what a scoped library can see of the host page -------------------------------------------
+window.isolation = async function(){
+  var out = {};
+  for (var i = 0; i < 2; i++) {
+    var mode = i ? 'with' : 'default';
+    reset();
+    var ctx = await make({scope: mode}).load([{url: '/fixtures/probe.js'}]);
+    out[mode] = ctx.probe;
+  }
+  return out;
+};
+
+// ---- two versions of one library, live at the same time ---------------------------------------
+window.versions = async function(){
+  reset();
+  var s = make();
+  var a = await s.load([{url: url('marked')}]);
+  var b = await s.load([{url: '/libs/marked4.js'}]);
+  return {
+    distinct: a.marked !== b.marked,
+    v7: (a.marked.parse || a.marked)('# a').trim(),
+    v4: (b.marked.parse || b.marked)('# a').trim(),
+    hostUntouched: window.marked() === 'HOST MARKED'
+  };
+};
+
+// ---- the key set proxin derives, against a real pristine window -------------------------------
+window.nativeKeys = function(){
+  var ifr = document.createElement('iframe');
+  ifr.style.cssText = 'position:absolute;width:0;height:0;opacity:0';
+  document.body.appendChild(ifr);
+  var real = Reflect.ownKeys(ifr.contentWindow).filter(function(k){ return typeof k === 'string' });
+  ifr.remove();
+  var derived = rescope.proxin.nativeKeys(window).attr;
+  return {
+    iframeCount: real.length,
+    derivedCount: Object.keys(derived).length,
+    // platform names the classification fails to recognise
+    missed: real.filter(function(k){ return !derived[k] }),
+    // things the host page defined that must NOT be treated as the platform's
+    hostLeaked: ['hostVar', 'marked', '_', 'boomlib'].filter(function(k){ return derived[k] })
+  };
+};
+
+// ---- CSP: which combinations survive which policy ---------------------------------------------
+window.evalAllowed = (function(){
+  try { new Function('return 1')(); return 'allowed' } catch (e) { return 'blocked' }
+})();
+
+window.cspCombos = async function(){
+  var out = {newFunction: window.evalAllowed};
+  var code = await (await fetch(url('marked'))).text();
+  var COMBOS = [
+    ['eval+peek', {}],
+    ['script+peek', {delivery: 'script'}],
+    ['script+with', {delivery: 'script', scope: 'with'}],
+    ['script+bundled', {delivery: 'script', bundled: true}]
+  ];
+  for (var i = 0; i < COMBOS.length; i++) {
+    var name = COMBOS[i][0], opt = Object.assign({}, COMBOS[i][1]);
+    var bundled = opt.bundled; delete opt.bundled;
+    reset();
+    // a page that included a bundle already knows the export names
+    if (bundled) rescope.cache({url: url('marked'), code: code, prop: ['marked']});
+    try {
+      var ctx = await make(opt).load([{url: url('marked')}]);
+      out[name] = WORKS.marked(ctx) === true ? 'ok' : 'loaded but broken';
+    } catch (e) { out[name] = 'fail' }
+  }
+  return out;
+};
+</script>
+</body></html>

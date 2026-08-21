@@ -37,6 +37,11 @@
    reached the caller's dual-context.
  - fix bug: reading a function off the proxy failed when `Reflect.get` declines to answer for a
    foreign receiver, which is how jsdom implements its interface objects.
+ - fix bug: the generated wrapper continued on the same line as the library's last one, so a
+   minified file ending in `//# sourceMappingURL=...` with no trailing newline had everything
+   after it commented out - an unterminated `try`, or a lost `return`. found by `moment` under
+   jsdom.
+ - add a regression suite: `./build && npm test`. see test/README.md.
 
 ## v5.0.18
 
