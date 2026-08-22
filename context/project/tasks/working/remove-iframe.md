@@ -7,7 +7,7 @@ came out of.
     branch  claude/design-remove-iframe-xz5xar
     version 5.1.0 ( was 5.0.18 )
     state   steps 1-5 shipped and green. step 6 and the ESM path are open.
-    verify  ./build && npm test        -> 75 passed, 0 failed
+    verify  ./build && npm test        -> 77 passed, 0 failed
 
 
 ## the problem this task started from
@@ -53,6 +53,12 @@ undefined - the demo page's `functest.js` calling `ldcover` went dead, and with 
 `load` now compiles and runs one lib at a time, in order; the `load order` group in the suite
 covers it in all three of `default`, `with` and `delivery: 'script'`.
 
+And one the `error-line` page turned up: the **peek's own `eval` had no `sourceURL`**. The peek runs
+the library before the wrapper does, so a library that throws *while loading* throws out of the
+peek - and that trace, the one the caller actually gets, named rescope's internals rather than the
+library's file and line. It carries the same `sourceURL` now, and a load time throw reports
+`thrower.js:3:7`, exactly where a plain `<script src>` puts it.
+
 Bugs fixed on the way, all with tests: intrinsics handed out as bound wrappers ( `global.Object ===
 Object` was false, which is why **lodash could not load and clobbered the host's `window._`** );
 restores that a throwing library skipped; `__win` leaking onto the real window; `_exports` dropping
@@ -72,6 +78,10 @@ restores that a throwing library skipped; `__win` leaking onto the real window; 
     doc/spec.md         lib fields and constructor options
     test/               the suite. test/README.md says what it covers
     dev/noframe.js      the standalone prototype the measurements came from. not used at run time
+    web/                the demo site ( `npm start` ). `/` is the two-d3-versions demo,
+                        `/loader-tester/` loads a url you give it - its README records which real
+                        libraries can not be scoped and why - and `/error-line/` runs a thrower
+                        both through rescope and as a plain script and compares the traces
     CHANGELOG.md        v5.1.0
 
 
@@ -120,13 +130,18 @@ In the order I would take them.
    verified. That removes the peek, the `eval` and the `with` in one move, for the subset of
    libraries that can use it. `ctx` semantics change ( module exports rather than leaked globals ),
    so it needs a design pass first.
-3. **`rsp.dual-context` does not carry the scope mode** ( `src/index.ls:515` - `new proxin!` with no
+3. **`rsp.dual-context` does not carry the scope mode** ( `src/index.ls:519` - `new proxin!` with no
    `{mode}` ). A caller using `dual-context` together with `scope: 'with'` gets a default-mode
    proxin. Small, but it is a real hole.
-4. **Host globals still leak in the default mode.** Only `scope: 'with'` closes it, since free
+4. **`amcharts` wants to be a script element.** It derives its webpack `publicPath` from
+   `document.currentScript` or the last `<script>` in the document, and scoped code is neither.
+   `web/static/assets/loader-tester/README.md` has the analysis and a verified fix - an inert
+   `<script type="application/rescope-marker" src=...>` parked for the duration of the run - which
+   is a behaviour change for every library, so it wants a decision rather than a patch.
+5. **Host globals still leak in the default mode.** Only `scope: 'with'` closes it, since free
    identifiers otherwise resolve to the real global scope. Do not try to fix this by blanking more
    names on the window - that is racy with anything the library does asynchronously.
-5. **Optional:** hoisting hot intrinsics out of the `with` object. Measured at ~15% in
+6. **Optional:** hoisting hot intrinsics out of the `with` object. Measured at ~15% in
    `dev/noframe.js`, deliberately not shipped - it needs a `has` trap that lies, which brings the
    invariants above into play. Only worth it if `with` run time becomes the thing that matters.
 

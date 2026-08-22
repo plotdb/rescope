@@ -81,6 +81,10 @@ window.bundleRoundTrip = async function(){
 };
 
 // ---- stack traces, and the restore a throwing library used to skip ----------------------------
+function frameIn(e, name){
+  var l = ((e && e.stack) || '').split('\n').filter(function(x){ return x.indexOf(name) >= 0 })[0];
+  return l ? l.trim() : '(no frame in ' + name + ')';
+}
 window.debuggability = async function(){
   var out = {};
   for (var i = 0; i < 2; i++) {
@@ -99,10 +103,23 @@ window.debuggability = async function(){
   try { window.boomlib.run() } catch (e) { out.trace_plainScript = e.stack.split('\n')[1].trim() }
   window.boomlib = 'HOST BOOMLIB';
 
+  // a library that throws while loading throws out of the peek, which runs it before the wrapper
+  // does - so the peek's own eval is what has to carry the sourceURL here.
   reset();
   out.throwingLoad = await make().load([{url: '/fixtures/thrower.js'}]).then(
-    function(){ return '(resolved)' }, function(e){ return 'rejected' });
+    function(){ return '(resolved)' },
+    function(e){ out.trace_load = frameIn(e, 'thrower.js'); return 'rejected' });
   out.hostRestoredAfterThrow = window.boomlib === 'HOST BOOMLIB';
+
+  // its reference: a load time throw never reaches a catch, it goes to window.onerror
+  out.trace_loadPlain = await new Promise(function(res){
+    var h = function(e){ res(frameIn(e.error, 'thrower.js')) };
+    window.addEventListener('error', h);
+    var s = document.createElement('script');
+    s.nonce = 'rescope'; s.src = '/fixtures/thrower.js';
+    s.onload = function(){ setTimeout(function(){ res('(no error)') }, 0) };
+    document.body.appendChild(s);
+  }).then(function(r){ window.boomlib = 'HOST BOOMLIB'; return r });
   return out;
 };
 

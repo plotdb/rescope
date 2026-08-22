@@ -307,7 +307,11 @@ rsp.prototype = Object.create(Object.prototype) <<<
           # this is a bad hack and we will need alternative method to overcome this. (TODO)
           # hopefully this is used only here for resolve export vars from a module -
           # we still enable strict mode in actual environment (`_wrap` below)
-          iw.eval((lib.code or '').replace('"use strict";',''))
+          # the peek runs the library too, and it runs it *first* - so a library that throws while
+          # loading throws from here, and this is the trace the caller gets. without a sourceURL
+          # it reads as `eval at <anonymous> ( rescope's own file )`. `source-url` opens with a
+          # newline, which is also what keeps it clear of a trailing `//# sourceMappingURL`.
+          iw.eval((lib.code or '').replace('"use strict";','') + rsp.source-url(lib.url or lib.id))
         catch e
           console.error "[@plotdb/rescope] Parse failed", lib{url, ns, name, version, path}
           console.error "[@plotdb/rescope] with this error:", e

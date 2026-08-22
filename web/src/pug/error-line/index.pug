@@ -1,0 +1,57 @@
+extends /base.pug
+block body
+block script
+  .p-5.w-1024.rwd.mx-auto
+    h3.mb-2 Error Line Tester
+    p.text-secondary
+      | A scoped library does not run as a file of its own - rescope compiles it into a wrapper and
+      | evaluates that. This page loads a library that throws and shows where the trace says it came
+      | from, next to where a plain
+      code  &lt;script src&gt;
+      |  says it came from. Those two should agree, down to the column.
+
+    .row.mb-4
+      .col-sm-4.mb-2
+        label.small.text-secondary.mb-1 scope
+        select.form-control.border(ld="scope")
+          option(value="default") default
+          option(value="with") with
+      .col-sm-4.mb-2
+        label.small.text-secondary.mb-1 delivery
+        select.form-control.border(ld="delivery")
+          option(value="eval") eval
+          option(value="script") script ( blob )
+      .col-sm-4.mb-2
+        label.small.text-secondary.mb-1 &nbsp;
+        .btn.btn-block.border(ld="rerun") Run again
+
+    .mb-2
+      .input-group.mb-2
+        input.form-control.border(ld="url",placeholder="url of a library that throws")
+        input.form-control.border(ld="call",placeholder="global to call .run() on",style="max-width:16rem;flex:0 0 16rem")
+        .input-group-append: .btn.border(ld="load") Load
+      .text-secondary.d-flex.flex-wrap
+        span.mr-2 samples:
+        span.clickable.text-primary.mr-3(ld="sample",data-url="/assets/error-line/throw-on-load.js") throws while loading
+        span.clickable.text-primary.mr-3(ld="sample",data-url="/assets/error-line/throw-on-call.js",data-call="callThrower") throws from a call, three frames deep
+        span.clickable.text-primary.mr-3(ld="sample",data-url="/assets/error-line/throw-minified.js",data-call="minThrower") minified, one line, trailing sourceMappingURL
+        span.clickable.text-primary.mr-3(ld="sample",data-url="/assets/error-line/throw-async.js",data-call="asyncThrower") throws out of a timer
+
+    .p-3.border.rounded.mb-2(ld="verdict") pick a sample above.
+    p.small.text-secondary.mb-4
+      | One difference is by design: the wrapper's prologue shares the library's first line, so a
+      | throw from line 1 - which is every line of a minified file - reports a column shifted by the
+      | length of that prologue. Any other line, and every line number, is reported as its own.
+
+    .row
+      .col-lg-6.mb-4
+        h6.text-secondary through rescope
+        .p-3.border.rounded.bg-light(ld="scoped",style="white-space:pre;overflow-x:auto;font-family:monospace;font-size:.8rem") n/a
+      .col-lg-6.mb-4
+        h6.text-secondary as a plain script, for reference
+        .p-3.border.rounded.bg-light(ld="plain",style="white-space:pre;overflow-x:auto;font-family:monospace;font-size:.8rem") n/a
+
+    +script([
+      {name: "ldview"}
+    ])
+    script(type="module"): include:lsc index.ls

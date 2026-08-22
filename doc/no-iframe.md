@@ -394,7 +394,11 @@ that same relative map reference would resolve against the `blob:` URL instead a
 Two smaller notes:
 
  - the peek pass parses and runs every library a second time, so DevTools shows two copies of it
-   and a breakpoint hits twice. Dropping the peek ( step 2 below ) removes that too.
+   and a breakpoint hits twice. Dropping the peek ( step 2 below ) removes that too. It also runs
+   the library *first*, so a library that throws while loading throws out of the peek and that is
+   the trace the caller gets - the peek's own `eval` has to carry the same `sourceURL`, or a load
+   time failure reports `eval at <anonymous> ( rescope's own file )` no matter what the wrapper
+   says. `web/src/pug/error-line` is where this showed up.
  - loading one URL into two scopes produces two scripts with the same `sourceURL`. Appending the
    scope id ( `…/d3.min.js?rescope=<id>` ) keeps them apart in the Sources tree without breaking
    relative source map resolution.

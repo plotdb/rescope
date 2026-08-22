@@ -86,6 +86,10 @@ async function run() {
       eq(where(r.trace_default), want, 'default mode reports the same place as a plain script');
       eq(where(r.trace_with), want, "scope:'with' reports the same place as a plain script");
       ok(r.throwingLoad === 'rejected', 'a library that throws while loading rejects');
+      const wantLoad = where(r.trace_loadPlain);
+      ok(wantLoad === 'thrower.js:3:7' || `reference reported ${wantLoad}`,
+        'reference: a plain script throwing while loading points at thrower.js:3', r.trace_loadPlain);
+      eq(where(r.trace_load), wantLoad, 'and so does one that throws through rescope');
       ok(r.hostRestoredAfterThrow === true, 'host globals are restored even when it throws');
       await page.close();
     }
