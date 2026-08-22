@@ -154,6 +154,37 @@ window.loadOrder = async function(){
   return out;
 };
 
+// ---- the script element a scoped library is given ---------------------------------------------
+window.scriptElement = async function(){
+  var out = {}, url = '/fixtures/whereami.js';
+  var cases = [['default', {}], ['with', {scope: 'with'}], ['script', {delivery: 'script'}],
+               ['off', {scriptElement: false}]];
+  for (var i = 0; i < cases.length; i++) {
+    reset();
+    try { out[cases[i][0]] = (await make(cases[i][1]).load([{url: url}])).whereAmI }
+    catch (e) { out[cases[i][0]] = {error: String(e).slice(0, 140)} }
+  }
+  // the host's own slot belongs to the host: back to null, and no own property left behind
+  out.hostClean = {currentScript: document.currentScript,
+                   ownProperty: !!Object.getOwnPropertyDescriptor(document, 'currentScript')};
+  // the node stays, as a real script element would - one per url, however often it is loaded
+  var nodes = document.querySelectorAll('script[data-rescope]');
+  out.nodes = {count: nodes.length, type: nodes[0] && nodes[0].type, src: nodes[0] && nodes[0].src};
+  // and it never ran: a classic script would have left `whereAmI` on the host window
+  out.markerRan = typeof window.whereAmI !== 'undefined';
+
+  // the amcharts case, in miniature
+  for (var j = 0; j < 2; j++) {
+    var on = (j === 0);
+    reset();
+    out[on ? 'publicPath' : 'publicPathOff'] = await make(on ? {} : {scriptElement: false})
+      .load([{url: '/fixtures/publicpath.js'}])
+      .then(function(ctx){ return ctx.publicPath && ctx.publicPath.base },
+            function(e){ return 'ERR ' + String(e).slice(0, 60) });
+  }
+  return out;
+};
+
 // ---- two versions of one library, live at the same time ---------------------------------------
 window.versions = async function(){
   reset();

@@ -179,6 +179,9 @@ rsp = (o = {}) ->
   # `delivery`: 'eval' compiles the wrapper, 'script' hands it to a script element - see `_gen`.
   @_scope = o.scope or \default
   @_delivery = o.delivery or \eval
+  # `script-element`: hand each library a `<script>` of its own to be found by - see `pretend-script`.
+  # on by default; the libraries that never ask can not tell the difference.
+  @_script-element = if o.script-element? => !!o.script-element else true
   @_preloads = o.preloads or []
   @proxy = new proxin!
   @registry(o.registry or "/assets/lib/")
@@ -196,6 +199,58 @@ rsp.compile = (code, src) ->
   if win and typeof(win.eval) == \function =>
     return win.eval "(function(scope, ctx, win){#code})#{rsp.source-url src}"
   return new Function "scope", "ctx", "win", code
+# a scoped library never becomes a `<script>` of its own, so both ways it has of asking where it
+# came from answer wrong: `document.currentScript` is null inside an eval, and the older idiom
+# ( the last `<script>` in the document ) points at whatever the page happens to end with. for the
+# length of its synchronous run, hand it a script element of its own.
+# why this is on by default, why the node stays while the override is unwound, and which options
+# were rejected: context/project/tasks/working/currentscript.md
+rsp.marker-type = \application/rescope-marker
+rsp.markers = if typeof(WeakMap) == \function => new WeakMap! else null
+
+# one node per url per document, reused. never re-`src` an existing node: a library that captured
+# the element would find its own url swapped out from under it by the next load. no url, no node -
+# a library handed to us as raw code has no origin to claim, and inventing one is worse than null.
+rsp.script-node = (d, lib) ->
+  url = lib.url or lib.resolved-url
+  if !(rsp.markers and d and d.createElement and url) => return null
+  if !(map = rsp.markers.get d) => rsp.markers.set d, (map = {})
+  if !(node = map[url]) =>
+    node = map[url] = d.createElement \script
+    # a type that is not a JS MIME type means the browser neither fetches nor executes it - that is
+    # the spec, not a trick - while `.src`, `getAttribute('src')` and `document.scripts` all answer
+    # as they would for any script.
+    node.setAttribute \type, rsp.marker-type
+    node.setAttribute \src, url
+    node.setAttribute \data-rescope, (lib.id or url)
+  # move it last, so the last-script-tag idiom finds this library rather than the one before it.
+  # re-inserting can not run it: prepare-a-script bails on the type again.
+  (d.body or d.documentElement).appendChild node
+  node
+
+# `currentScript` is a page wide slot that belongs to the host, and a real script leaves it at null
+# when it finishes - so it is restored in `finally`, like every other restore here. the node itself
+# stays, exactly as a real script element would: `var me = document.currentScript` read from a later
+# timer needs it still attached.
+rsp.pretend-script = (d, lib, f) ->
+  node = null
+  try
+    node = rsp.script-node d, lib
+  catch e
+  if !node => return f!
+  faked = false
+  try
+    Object.defineProperty d, \currentScript, {configurable: true, get: -> node}
+    faked = true
+  catch e
+  try
+    return f!
+  finally
+    if faked =>
+      try
+        delete d.currentScript
+      catch e
+
 rsp.prop = legacy: {webkitStorageInfo: true}
 rsp.id = (o) ->
   path = o.path or if o.type == \js => \index.min.js else if o.type == \css => \index.min.css else \index.html
@@ -237,10 +292,16 @@ rsp.prototype = Object.create(Object.prototype) <<<
   peek-scope: -> false # deprecated
   init: -> Promise.resolve! # deprecated
 
-  _ref: (o) ->
-    if typeof(o) == \string => o = {url: o}
+  _ref: (lib) ->
+    o = if typeof(lib) == \string => {url: lib} else lib
     # promise from r(o) is deprecated. but if it is, url:r(o) is kinda weird. but ...
-    if typeof(r = @_reg.url or @_reg) == \function => o = {} <<< o <<< {url: r o}
+    if typeof(r = @_reg.url or @_reg) == \function =>
+      o = {} <<< o <<< {url: r o}
+      # remember where the registry sent us: a library loaded by name has no `url` of its own, and
+      # the script element `load` hands it has to carry one. kept under its own key because
+      # `rsp.id` reads `url`, and giving a by-name library a url-shaped id would change how the
+      # version machinery dedupes it.
+      if lib and typeof(lib) == \object and !lib.url => lib.resolved-url = o.url
     # ... it will be return directly since then @_reg.fetch won't exist.
     return if @_reg.fetch => @_reg.fetch(o) else o.url
 
@@ -311,7 +372,11 @@ rsp.prototype = Object.create(Object.prototype) <<<
           # loading throws from here, and this is the trace the caller gets. without a sourceURL
           # it reads as `eval at <anonymous> ( rescope's own file )`. `source-url` opens with a
           # newline, which is also what keeps it clear of a trailing `//# sourceMappingURL`.
-          iw.eval((lib.code or '').replace('"use strict";','') + rsp.source-url(lib.url or lib.id))
+          # the peek runs the library before the wrapper does, so this is where it asks first -
+          # and the peek window has no script tags at all, which is where amcharts' `cannot read
+          # 'src' of undefined` came from.
+          ev = -> iw.eval((lib.code or '').replace('"use strict";','') + rsp.source-url(lib.url or lib.id))
+          if @_script-element => rsp.pretend-script iw.document, lib, ev else ev!
         catch e
           console.error "[@plotdb/rescope] Parse failed", lib{url, ns, name, version, path}
           console.error "[@plotdb/rescope] with this error:", e
@@ -493,11 +558,16 @@ rsp.prototype = Object.create(Object.prototype) <<<
             (p, lib) ~> p.then ~>
               if !lib.prop-initing => return ctx <<< lib.prop
               @_gen lib, ctx .then (gen) ~>
-                if @_scope != \with => lib.prop = gen.apply proxy, [proxy, ctx, win]
-                else
-                  seen = Object.fromEntries [[k, true] for k of ctx]
-                  gen.apply proxy, [proxy, ctx, win]
-                  lib.prop = Object.fromEntries [[k, ctx[k]] for k of ctx when !seen[k]]
+                run = ~>
+                  if @_scope != \with => lib.prop = gen.apply proxy, [proxy, ctx, win]
+                  else
+                    seen = Object.fromEntries [[k, true] for k of ctx]
+                    gen.apply proxy, [proxy, ctx, win]
+                    lib.prop = Object.fromEntries [[k, ctx[k]] for k of ctx when !seen[k]]
+                # the library's own run. the fake `currentScript` covers exactly this - not the
+                # fetch above ( async, so the page could see it ) and not the blob script that
+                # `delivery: 'script'` runs to *define* the wrapper ( the body hasn't run yet ).
+                if @_script-element => rsp.pretend-script doc, lib, run else run!
                 lib.prop-initing = false
                 ctx <<< lib.prop
             Promise.resolve!

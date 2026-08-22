@@ -408,6 +408,68 @@ exactly this reason. Verified that a library loaded through it produces a stack 
 the same library loaded with a plain `<script src>`.
 
 
+## Where a library thinks it came from
+
+A scoped library never becomes a `<script>` element, so both ways it has of asking where it was
+loaded from answer wrong:
+
+    document.currentScript                          // null - we are inside an eval
+    document.getElementsByTagName('script')[last]   // whatever the page happens to end with
+
+`amcharts-core.js` is the case that made this visible. It derives its webpack `publicPath` from
+exactly those two, in that order, and throws before exporting anything when neither answers - in
+the peek window because it has no `<script>` at all ( `cannot read 'src' of undefined` ), in the
+host document because the last script there is usually the page's own inline one, whose `src` is
+`""` ( the regex returns null ). This is not something the iframe work broke; it fails the same way
+on every earlier version.
+
+`document.currentScript` is the API meant for this question. The last-script-tag idiom predates it
+and is wrong by construction - it assumes the library was loaded by whatever script is currently
+last, which stops being true the moment anything is `async`, `defer` or injected. So we answer the
+right one and let the wrong one fall out of the same mechanism:
+
+ - an inert `<script type="application/rescope-marker" src="<the library's url>" data-rescope=...>`
+   is appended to the document. The type is not a JS MIME type, so the browser neither fetches nor
+   executes it - a spec guarantee rather than a trick - while `.src`, `getAttribute('src')` and
+   `document.scripts` all answer as they would for any script.
+ - `document.currentScript` is defined as an own property of the document, returning that element,
+   **for the length of the library's synchronous run only**.
+
+On by default. A library that never asks cannot tell the difference, and `null` is not a neutral
+answer - libraries do not quietly give up on it, they fall through to the broken heuristic or
+crash. This is also the same kind of substitution rescope already has to make: `window`, `global`,
+`globalThis`, `self` and `event.source` are all replaced so scoped code believes it is running
+normally. `scriptElement: false` turns it off.
+
+Two halves, two different lifetimes, for reasons worth keeping straight:
+
+ - **the override is unwound in `finally`.** `currentScript` is a page-wide slot that belongs to the
+   host, and a real script leaves it at `null` when it finishes. Leaving a fake one in place would
+   lie to every later script on the page.
+ - **the element stays.** A real script element stays in the document forever, and
+   `var me = document.currentScript` read back from a later timer needs it still attached - removing
+   it would break the very pattern the element is there for. One element per url, never re-`src`ed:
+   a library that captured the element would otherwise find its own url swapped out from under it
+   by the next load.
+
+Rejected on the way. A `DocumentFragment` parent instead of the document keeps
+`currentScript.parentNode.insertBefore(x, me)` from throwing, but the node lands nowhere - the
+library believes it worked and nothing happened, which is harder to debug than a throw, and it
+would make one path through the document behave differently from `document.body.appendChild`,
+which already inserts and executes for real. A container `<div>` of our own is tidier to look at
+but puts an anonymous element where a real script would have had `body` - and `parentNode` being
+faithful is the only reason the node is kept at all.
+
+What it does not fix: `currentScript.getAttribute('data-api-key')` and friends, since there is no
+real tag and so no attributes; and a library that scans script tags to decide whether it is already
+loaded will now see its own url. Both known, both accepted.
+
+Measured, in Chrome: `Document.prototype.currentScript` is a configurable accessor, so an own
+property shadows it and `delete` puts it back with nothing left behind ( jsdom agrees ); a script
+with a non-JS type and a real `src` produces no network request; amcharts loads and exports
+`am4core` in `default`, `with` and `delivery: 'script'`, and fails in all three with
+`scriptElement: false`.
+
 ## Recommendation
 
 Staged, so each step stands alone:

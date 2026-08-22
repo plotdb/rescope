@@ -40,6 +40,28 @@ async function run() {
     else note(`node/default created ${frames() - before} iframe ( the peek window, shared )`);
   }
 
+  // the script element a scoped library is given. jsdom's peek window has no globals of its own,
+  // so the fixture guards `document`; the run that has to answer is the wrapper's.
+  // only `with` here: jsdom's peek window is a degraded context with no `document` of its own, so
+  // in the default mode it is the peek's answer that reaches the caller, not the wrapper's. the
+  // browser half checks all three modes, and that is the environment the question belongs to.
+  {
+    rescope._cache = {}; rescope._ver = {map: {}, list: {}};
+    const rsp = new rescope({
+      registry: o => require('path').join(__dirname, 'fixtures', `${o.name}.js`),
+      scope: 'with',
+    });
+    try {
+      const ctx = await rsp.load([{name: 'whereami'}]);
+      const seen = ctx.whereAmI && ctx.whereAmI.currentScript;
+      ok(String(seen).endsWith('whereami.js') || `saw ${seen}`,
+        "node/with: document.currentScript names the library's url ( by name, via the registry )");
+      ok(dom.window.document.currentScript === null || 'left behind on the host document',
+        "node/with: and the host's currentScript is null again afterwards");
+    } catch (e) { ok(String(e).split('\n')[0].slice(0, 120), 'node/with: currentScript'); }
+    note("jsdom's peek window has no document, so the default mode can not be checked here");
+  }
+
   // one `load` call, two libraries, the second reading the first's export by bare name. the real
   // guard for this is in the browser half - under jsdom the name leaks onto the host window
   // anyway, so this passes either way. it is here to keep the node path honest about the shape.

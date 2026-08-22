@@ -125,6 +125,31 @@ async function run() {
       await page.close();
     }
 
+    // ---- the script element a scoped library is given ------------------------------------------
+    group('script element');
+    {
+      const {page} = await open();
+      const r = await call(page, 'scriptElement');
+      const named = (v) => String(v).endsWith('/fixtures/whereami.js') || `saw ${v}`;
+      for (const mode of ['default', 'with', 'script']) {
+        ok(named(r[mode].currentScript), `${mode}: document.currentScript names the library's url`,
+          r[mode].currentScript);
+        eq(r[mode].parentTag, 'BODY', `${mode}: and it sits in the document, like a real script`);
+        ok(named(r[mode].lastScript), `${mode}: the last <script> in the document is the library's`);
+      }
+      eq(r.off.currentScript, null, "scriptElement: false leaves currentScript alone");
+      eq(r.hostClean.currentScript, null, "the host's currentScript is null again afterwards");
+      eq(r.hostClean.ownProperty, false, 'with no own property left on the document');
+      eq(r.nodes.count, 1, 'one node per url, however many times it is loaded');
+      eq(r.nodes.type, 'application/rescope-marker', 'the node carries a type that can not execute');
+      eq(r.markerRan, false, 'and it never ran');
+      ok(String(r.publicPath).endsWith('/fixtures/'),
+        'a library deriving a base url from its script tag gets its own directory', r.publicPath);
+      ok(/^ERR/.test(r.publicPathOff),
+        'and without one it fails, which is the amcharts case', r.publicPathOff);
+      await page.close();
+    }
+
     // ---- two versions at once ---------------------------------------------------------------------
     group('versions');
     if (!has('marked4')) skip('two versions side by side', 'marked4 not installed ( npm alias )');

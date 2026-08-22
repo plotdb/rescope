@@ -25,6 +25,12 @@ a component mounted.
    same place a plain `<script src>` reports. And a library that throws while loading must leave the
    host page's globals as it found them.
  - **isolation** - what scoped code can see of the host page, in both modes.
+ - **script element** - what a library can find out about where it came from:
+   `document.currentScript` and the last `<script>` in the document, across both scopes and both
+   deliveries, plus the amcharts idiom in miniature ( derive a base url from your own script tag,
+   or refuse to start ). Also that the host's `currentScript` is back to null afterwards with no
+   own property left on the document, that the element never executed, and that there is one of
+   them per url however often it is loaded.
  - **load order** - one `load` call with two libraries, the second reading the first's export as a
    bare name - the web demo's own shape, where `functest.js` calls `ldcover`. Each wrapper's
    prologue only declares the names the context held when it was compiled, so compiling a batch
@@ -46,7 +52,8 @@ a component mounted.
     browser.js      the browser half: assertions live here
     page/index.html the harness the browser half calls into
     fixtures/       small libraries with known behaviour ( a known throw line, a probe, a
-                    provider/consumer pair for load order )
+                    provider/consumer pair for load order, a pair that report and use what they
+                    can see of their own script element )
     lib/            server, chromium lookup, library paths, pass/fail reporting
 
 Findings are recorded as `note` rather than an assertion where they are known limitations rather

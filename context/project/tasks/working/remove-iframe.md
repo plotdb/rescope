@@ -7,7 +7,7 @@ came out of.
     branch  claude/design-remove-iframe-xz5xar
     version 5.1.0 ( was 5.0.18 )
     state   steps 1-5 shipped and green. step 6 and the ESM path are open.
-    verify  ./build && npm test        -> 77 passed, 0 failed
+    verify  ./build && npm test        -> 96 passed, 0 failed
 
 
 ## the problem this task started from
@@ -58,6 +58,11 @@ the library before the wrapper does, so a library that throws *while loading* th
 peek - and that trace, the one the caller actually gets, named rescope's internals rather than the
 library's file and line. It carries the same `sourceURL` now, and a load time throw reports
 `thrower.js:3:7`, exactly where a plain `<script src>` puts it.
+
+Since then, `scriptElement` ( on by default ): a scoped library is handed an inert `<script>`
+element carrying its own url, and `document.currentScript` answers with it while the library runs.
+`amcharts-core.js` could not load without it. Its own note is
+`context/project/tasks/working/currentscript.md`; the reasoning is in `doc/no-iframe.md`.
 
 Bugs fixed on the way, all with tests: intrinsics handed out as bound wrappers ( `global.Object ===
 Object` was false, which is why **lodash could not load and clobbered the host's `window._`** );
@@ -133,15 +138,10 @@ In the order I would take them.
 3. **`rsp.dual-context` does not carry the scope mode** ( `src/index.ls:519` - `new proxin!` with no
    `{mode}` ). A caller using `dual-context` together with `scope: 'with'` gets a default-mode
    proxin. Small, but it is a real hole.
-4. **`amcharts` wants to be a script element.** It derives its webpack `publicPath` from
-   `document.currentScript` or the last `<script>` in the document, and scoped code is neither.
-   `web/static/assets/loader-tester/README.md` has the analysis and a verified fix - an inert
-   `<script type="application/rescope-marker" src=...>` parked for the duration of the run - which
-   is a behaviour change for every library, so it wants a decision rather than a patch.
-5. **Host globals still leak in the default mode.** Only `scope: 'with'` closes it, since free
+4. **Host globals still leak in the default mode.** Only `scope: 'with'` closes it, since free
    identifiers otherwise resolve to the real global scope. Do not try to fix this by blanking more
    names on the window - that is racy with anything the library does asynchronously.
-6. **Optional:** hoisting hot intrinsics out of the `with` object. Measured at ~15% in
+5. **Optional:** hoisting hot intrinsics out of the `with` object. Measured at ~15% in
    `dev/noframe.js`, deliberately not shipped - it needs a `has` trap that lies, which brings the
    invariants above into play. Only worth it if `with` run time becomes the thing that matters.
 

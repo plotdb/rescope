@@ -19,6 +19,15 @@
    being compiled, so CSP sees a script load rather than `eval`. combined with `scope: 'with'` or
    a bundle that carries `prop`, rescope runs with no `'unsafe-eval'` grant at all - verified under
    `nonce` + `strict-dynamic` and under `script-src 'self' 'unsafe-inline' blob:`.
+ - a scoped library is now handed a `<script>` element of its own to be found by: while it runs,
+   `document.currentScript` answers with an inert element carrying the library's real url, and
+   that element stays in the document where the older `getElementsByTagName('script')` idiom finds
+   it too. libraries derive their base url this way - `amcharts-core.js` could not load at all
+   without it, since `currentScript` is null inside an `eval` and the fallback found the page's
+   own inline script. on by default; `scriptElement: false` turns it off. the element's `type` is
+   not a JS MIME type, so it is never fetched or executed, and the override of `currentScript` is
+   unwound as soon as the library's synchronous run ends - the host page's own scripts never see
+   it. see doc/no-iframe.md.
  - generated wrappers now carry `//# sourceURL` and are compiled with an indirect `eval` rather
    than the `Function` constructor, which prepended a header and shifted every reported line by
    two. a library throwing from its line 4 now reports `lib.js:4:9` - the same as if it had been

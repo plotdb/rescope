@@ -286,6 +286,7 @@ rsp = function(o){
   this._cache = {};
   this._scope = o.scope || 'default';
   this._delivery = o.delivery || 'eval';
+  this._scriptElement = o.scriptElement != null ? !!o.scriptElement : true;
   this._preloads = o.preloads || [];
   this.proxy = new proxin();
   this.registry(o.registry || "/assets/lib/");
@@ -307,6 +308,61 @@ rsp.compile = function(code, src){
     return win.eval("(function(scope, ctx, win){" + code + "})" + rsp.sourceUrl(src));
   }
   return new Function("scope", "ctx", "win", code);
+};
+rsp.markerType = 'application/rescope-marker';
+rsp.markers = typeof WeakMap === 'function' ? new WeakMap() : null;
+rsp.scriptNode = function(d, lib){
+  var url, map, node;
+  url = lib.url || lib.resolvedUrl;
+  if (!(rsp.markers && d && d.createElement && url)) {
+    return null;
+  }
+  if (!(map = rsp.markers.get(d))) {
+    rsp.markers.set(d, map = {});
+  }
+  if (!(node = map[url])) {
+    node = map[url] = d.createElement('script');
+    node.setAttribute('type', rsp.markerType);
+    node.setAttribute('src', url);
+    node.setAttribute('data-rescope', lib.id || url);
+  }
+  (d.body || d.documentElement).appendChild(node);
+  return node;
+};
+rsp.pretendScript = function(d, lib, f){
+  var node, e, faked;
+  node = null;
+  try {
+    node = rsp.scriptNode(d, lib);
+  } catch (e$) {
+    e = e$;
+  }
+  if (!node) {
+    return f();
+  }
+  faked = false;
+  try {
+    Object.defineProperty(d, 'currentScript', {
+      configurable: true,
+      get: function(){
+        return node;
+      }
+    });
+    faked = true;
+  } catch (e$) {
+    e = e$;
+  }
+  try {
+    return f();
+  } finally {
+    if (faked) {
+      try {
+        delete d.currentScript;
+      } catch (e$) {
+        e = e$;
+      }
+    }
+  }
 };
 rsp.prop = {
   legacy: {
@@ -407,15 +463,16 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
   return false;
 }, ref$.init = function(){
   return Promise.resolve();
-}, ref$._ref = function(o){
-  var r, ref$;
-  if (typeof o === 'string') {
-    o = {
-      url: o
-    };
-  }
+}, ref$._ref = function(lib){
+  var o, r, ref$;
+  o = typeof lib === 'string' ? {
+    url: lib
+  } : lib;
   if (typeof (r = this._reg.url || this._reg) === 'function') {
     o = (ref$ = import$({}, o), ref$.url = r(o), ref$);
+    if (lib && typeof lib === 'object' && !lib.url) {
+      lib.resolvedUrl = o.url;
+    }
   }
   return this._reg.fetch
     ? this._reg.fetch(o)
@@ -491,7 +548,7 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
   }
   return results$;
 }, ref$._exports = function(libs, idx, ctx){
-  var lib, ref$, hash, fprop, iw, k, att1, e, att2, results$ = [];
+  var lib, ref$, hash, fprop, iw, k, att1, ev, e, att2, results$ = [];
   idx == null && (idx = 0);
   ctx == null && (ctx = {});
   if (!(lib = libs[idx])) {
@@ -525,7 +582,14 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
         hash[k] = iw[k];
       }
       try {
-        iw.eval((lib.code || '').replace('"use strict";', '') + rsp.sourceUrl(lib.url || lib.id));
+        ev = function(){
+          return iw.eval((lib.code || '').replace('"use strict";', '') + rsp.sourceUrl(lib.url || lib.id));
+        };
+        if (this._scriptElement) {
+          rsp.pretendScript(iw.document, lib, ev);
+        } else {
+          ev();
+        }
       } catch (e$) {
         e = e$;
         console.error("[@plotdb/rescope] Parse failed", {
@@ -738,27 +802,35 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
             return import$(ctx, lib.prop);
           }
           return this$._gen(lib, ctx).then(function(gen){
-            var seen, k;
-            if (this$._scope !== 'with') {
-              lib.prop = gen.apply(proxy, [proxy, ctx, win]);
-            } else {
-              seen = Object.fromEntries((function(){
-                var results$ = [];
-                for (k in ctx) {
-                  results$.push([k, true]);
-                }
-                return results$;
-              }()));
-              gen.apply(proxy, [proxy, ctx, win]);
-              lib.prop = Object.fromEntries((function(){
-                var results$ = [];
-                for (k in ctx) {
-                  if (!seen[k]) {
-                    results$.push([k, ctx[k]]);
+            var run;
+            run = function(){
+              var seen, k;
+              if (this$._scope !== 'with') {
+                return lib.prop = gen.apply(proxy, [proxy, ctx, win]);
+              } else {
+                seen = Object.fromEntries((function(){
+                  var results$ = [];
+                  for (k in ctx) {
+                    results$.push([k, true]);
                   }
-                }
-                return results$;
-              }()));
+                  return results$;
+                }()));
+                gen.apply(proxy, [proxy, ctx, win]);
+                return lib.prop = Object.fromEntries((function(){
+                  var results$ = [];
+                  for (k in ctx) {
+                    if (!seen[k]) {
+                      results$.push([k, ctx[k]]);
+                    }
+                  }
+                  return results$;
+                }()));
+              }
+            };
+            if (this$._scriptElement) {
+              rsp.pretendScript(doc, lib, run);
+            } else {
+              run();
             }
             lib.propIniting = false;
             return import$(ctx, lib.prop);

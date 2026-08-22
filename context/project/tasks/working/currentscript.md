@@ -1,13 +1,15 @@
 # task: let a scoped library find the script it came from
 
-Plan, written before the work. Whoever picks this up should not need the conversation it came out
-of. The reasoning is here because most of the cost of this change is in the decisions, not the code.
+Written as a plan before the work, and kept as the record of it - `what shipped` below is the only
+part added afterwards, so the plan can be read against what actually happened. Whoever picks this
+up should not need the conversation it came out of. The reasoning is here because most of the cost
+of this change was in the decisions, not the code.
 
     repo    plotdb/rescope
     branch  claude/design-remove-iframe-xz5xar
     version 5.1.0 ( unreleased - fold this in, do not open a new version )
-    state   designed, verified by hand in a browser, not implemented
-    verify  ./build && npm test        -> 77 passed, 0 failed before this task starts
+    state   shipped. default on, `scriptElement: false` to turn it off
+    verify  ./build && npm test        -> 96 passed, 0 failed ( 77 before this task )
 
 
 ## the problem
@@ -149,7 +151,38 @@ should agree, but nobody has run it.
    bail out. This is the one thing the leftover node costs us. Known, accepted.
 
 
-## the plan
+## what shipped
+
+Everything below the line held; nothing in the plan had to be revised except one thing the plan did
+not anticipate, in **`_ref`**: a library loaded by `name` / `version` / `path` has no `url` of its
+own - the registry's answer was computed and thrown away - so there was nothing for the element to
+carry. `_ref` now records it as `lib.resolved-url`. Deliberately *not* `lib.url`: `rsp.id` reads
+`url`, and giving a by-name library a url-shaped id would change how the version machinery dedupes
+it.
+
+The gate passed cleanly: with this on by default, the whole suite's output is byte-identical to the
+run before it, port numbers aside - the six real libraries, the iframe counts, and all four CSP
+policies. The marker element trips no policy, which follows from it never being fetched.
+
+Verified in the browser against the real thing, not just the fixtures: `amcharts-core.js` from
+`/loader-tester/` loads and exports `am4core` in `default`, `with` and `delivery: 'script'`, and
+still fails with `scriptElement: false`. The demo page at `/` is unchanged - both d3 versions draw,
+the dialog opens - and now carries one marker per library it loads, which reads as a useful record
+of what is scoped on the page.
+
+Two things worth knowing that came out of the implementation:
+
+ - **jsdom's peek window is a degraded context**: no `window`, no `document`, and top level `var`s
+   do not attach to it. In the default mode it is therefore the peek's answer that reaches the
+   caller there, not the wrapper's, so the node half asserts this in `with` mode only and prints a
+   note. The browser half covers all three. That context is also shared with the harness's own
+   scope - a fixture declaring a common identifier collides with whatever the runner declared,
+   which is why `whereami.js` uses `__d`.
+ - the element carries cross-origin urls ( `https://d3js.org/...` ) with no CORS or CSP
+   consequence, again because nothing is ever fetched.
+
+
+## the plan ( as written before the work )
 
 1. `src/index.ls`: the element and the override, bracketing `gen.apply` in `load`, and the same
    around the peek's `iw.eval` in `_exports`. `scriptElement` option next to `scope` and
