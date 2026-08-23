@@ -318,7 +318,12 @@ rsp.prototype = Object.create(Object.prototype) <<<
   registry: (v) ->
     if typeof(v) == \string =>
       if v[* - 1] == \/ => v = v.substring(0, v.length - 1)
-      @_reg = ((v) -> (o) -> "#{v}/#{o.name}/#{o.version or 'main'}/#{o.path or 'index.min.js'}") v
+      # a lib given a `url` keeps it. the prefix form has no other way to say so - `_ref` replaces
+      # `url` with whatever the registry returns, and this one is built from name / version / path
+      # alone, so a url'd lib used to be fetched from `<prefix>/undefined/main/index.min.js`. a
+      # function registry can express this itself, and every caller of one already does
+      # ( `({url, name}) -> url or ...` ); this is the same rule for the form that can't.
+      @_reg = ((v) -> (o) -> o.url or "#{v}/#{o.name}/#{o.version or 'main'}/#{o.path or 'index.min.js'}") v
     else @_reg = v
 
   cache: (o) ->

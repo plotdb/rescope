@@ -62,6 +62,23 @@ async function run() {
     note("jsdom's peek window has no document, so the default mode can not be checked here");
   }
 
+  // a string registry builds its path from name / version / path, and `_ref` replaces a lib's
+  // `url` with whatever the registry returns - so a lib given a url used to be fetched from
+  // `<prefix>/undefined/main/index.min.js`. a function registry can say `url or ...` for itself;
+  // this form could not.
+  {
+    rescope._cache = {}; rescope._ver = {map: {}, list: {}};
+    const dir = require('path').join(__dirname, 'fixtures');
+    const rsp = new rescope({registry: dir});          // the string form
+    try {
+      const ctx = await rsp.load([{url: require('path').join(dir, 'provider.js')}]);
+      ok(typeof ctx.provided === 'function' || `exports were [${Object.keys(ctx)}]`,
+        'a string registry leaves a lib that was given a url alone');
+    } catch (e) {
+      ok(String(e).split('\n')[0].slice(0, 120), 'a string registry leaves a lib that was given a url alone');
+    }
+  }
+
   // one `load` call, two libraries, the second reading the first's export by bare name. the real
   // guard for this is in the browser half - under jsdom the name leaks onto the host window
   // anyway, so this passes either way. it is here to keep the node path honest about the shape.

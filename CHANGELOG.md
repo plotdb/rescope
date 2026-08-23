@@ -19,6 +19,12 @@
    being compiled, so CSP sees a script load rather than `eval`. combined with `scope: 'with'` or
    a bundle that carries `prop`, rescope runs with no `'unsafe-eval'` grant at all - verified under
    `nonce` + `strict-dynamic` and under `script-src 'self' 'unsafe-inline' blob:`.
+ - fix bug: the string form of `registry` ( which is also the default, `/assets/lib/` ) built its
+   path from `name` / `version` / `path` and ignored a lib's own `url`, while `_ref` takes the
+   registry's answer over whatever the lib carried - so `new rescope!` loading `{url: '...'}`
+   fetched `/assets/lib/undefined/main/index.min.js`. a lib given a url now keeps it. a function
+   registry could always express this itself and every caller of one already did
+   ( `({url, name}) -> url or ...` ); this is the same rule for the form that could not.
  - a scoped library is now handed a `<script>` element of its own to be found by: while it runs,
    `document.currentScript` answers with an inert element carrying the library's real url, and
    that element stays in the document where the older `getElementsByTagName('script')` idiom finds

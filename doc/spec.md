@@ -35,7 +35,10 @@ bundled version ( what `bundle` writes and `rescope.cache` reads )
 rescope options ( `new rescope({...})` )
 
  - `registry`: where a lib's `name` / `version` / `path` resolves to. string prefix, function, or
-   an object with `url` and optionally `fetch`.
+   an object with `url` and optionally `fetch`. a lib that was given a `url` keeps it - the string
+   prefix form skips itself for those, and a function form is expected to do the same
+   ( `({url, name, version, path}) -> url or ... ` ), since `_ref` takes the registry's answer over
+   whatever the lib carried.
  - `preloads`: scripts to put in the peek window before anything is peeked there.
  - `scope`: `default` pre-declares the names in `prop` in the wrapper, which is why the peek has to
    find them first. `with` runs the lib inside `with(scope)` instead, so nothing has to be known in

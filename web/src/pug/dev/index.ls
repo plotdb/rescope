@@ -27,10 +27,8 @@ libs = [
   # whole page down with it is what this list costs.
 ]
 
-# the libs above are given by url, and the default string registry builds its path from
-# name / version / path - it would ask for `/assets/lib/undefined/main/index.min.js`. every other
-# page here passes the same registry for the same reason.
-scope = new rescope registry: ({url}) -> url
+# no registry: the libs above are given by url, and the default one leaves those alone now.
+scope = new rescope!
 scope.init!
   .then ->
     scope.load libs
