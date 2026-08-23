@@ -101,7 +101,13 @@ block body
             span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-on-call.js",data-call="callThrower") throws from a call, three frames deep
             span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-minified.js",data-call="minThrower") minified, one line, trailing sourceMappingURL
             span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-async.js",data-call="asyncThrower") throws out of a timer
+          .form-check.small.mb-3
+            input.form-check-input(type="checkbox",id="el-throw",ld="el-throw")
+            label.form-check-label.text-secondary(for="el-throw").
+              Also run it once with nothing catching it, so the throw reaches the browser itself.
+              Open the console to see where it says the error came from.
           .p-3.border.rounded.mb-2(ld="el-verdict") pick a sample above.
+          .small.mb-2(ld="el-thrown")
           p.small.text-secondary.mb-3.
             One difference is by design: the wrapper's prologue shares the library's first line, so
             a throw from line 1 - which is every line of a minified file - reports a column shifted

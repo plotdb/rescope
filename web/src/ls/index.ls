@@ -266,6 +266,42 @@ el-verdict = (a, b) ->
   node.classList.add (if cls == \text-success => \border-success else if cls == \text-danger => \border-danger else \border)
   node.textContent = text
 
+# the two panes above are our own reading of `e.stack`. this runs the sample once more with nothing
+# catching it anywhere, so the throw reaches the browser: `filename` / `lineno` / `colno` on the
+# error event are the engine's own attribution, not ours, and the console gets the same entry. we
+# listen without calling preventDefault, so it is still reported as uncaught.
+el-really-throw = ({url, call}) ->
+  new Promise (res) ->
+    done = false
+    hdr = null
+    on-error = null
+    on-reject = null
+    finish = (r) ->
+      if done => return
+      done := true
+      clearTimeout hdr
+      window.removeEventListener \error, on-error
+      window.removeEventListener \unhandledrejection, on-reject
+      res r
+    on-error := (e) -> finish {filename: e.filename, line: e.lineno, col: e.colno}
+    on-reject := (e) ->
+      frame = (((e.reason and e.reason.stack) or '').split('\n')[1] or '').trim!
+      finish {kind: 'unhandled rejection', frame: frame}
+    window.addEventListener \error, on-error
+    window.addEventListener \unhandledrejection, on-reject
+    hdr := setTimeout (-> finish null), 4000
+    scope = new rescope do
+      registry: ({url}) -> url
+      scope: view.get(\el-scope).value
+      delivery: view.get(\el-delivery).value
+    # a library that throws while loading rejects, and nobody here is listening to that promise
+    if !call => scope.load [{url}]
+    else scope.load [{url}] .then (ctx) ->
+      # `setTimeout` puts the call outside the promise chain, so a throw from it is the real thing
+      # rather than something a `.then` would swallow
+      if ctx[call] and typeof(ctx[call].run) == \function => setTimeout (-> ctx[call].run!), 0
+      else finish null
+
 # one run at a time: both runs write into the same two panes, so overlapping them would interleave
 # the output. a click during a run is remembered rather than dropped - the last thing you clicked
 # is what you get.
@@ -284,6 +320,21 @@ el-run = (o) ->
     el-scoped(o).then (r) -> el-render \el-scoped, r, o.url
     el-plain(o).then (r) -> el-render \el-plain, r, o.url
   ] .then ([a, b]) -> el-verdict a, b
+    .then ->
+      n = view.get \el-thrown
+      if !view.get(\el-throw).checked => return n.textContent = ''
+      n.className = "small mb-2 text-secondary"
+      n.textContent = "running it again with nothing catching it ..."
+      el-really-throw(o).then (r) ->
+        # deliberately not red: green and red in this section mean "the two traces agreed" or
+        # "they did not", and a throw landing in the console is the expected outcome here.
+        n.className = "small mb-2 text-secondary"
+        n.textContent =
+          if !r => "left alone, it did not throw."
+          else if r.filename? =>
+            "thrown for real. the browser reported it at #{r.filename}:#{r.line}:#{r.col} - \
+             the same entry is in the console, and those numbers are the engine's, not ours."
+          else "thrown for real, as an #{r.kind}: #{r.frame} - the same entry is in the console."
     .finally ->
       el-running := false
       if el-pending =>

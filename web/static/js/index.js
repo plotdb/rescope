@@ -1,4 +1,4 @@
-var registry, esc, note, reset, framesNow, d3pkg, draw, runVersions, dialogPkg, dialogTpl, ensureDialog, runDialog, loaderCheck, loaderResult, loaderLoad, srcCache, source, elFrames, nameOf, elLibFrame, elExcerpt, elFmtFrame, elRender, elScoped, elPlain, elVerdict, elLast, elRunning, elPending, elRun, bundleLibs, runBundle, spy, view;
+var registry, esc, note, reset, framesNow, d3pkg, draw, runVersions, dialogPkg, dialogTpl, ensureDialog, runDialog, loaderCheck, loaderResult, loaderLoad, srcCache, source, elFrames, nameOf, elLibFrame, elExcerpt, elFmtFrame, elRender, elScoped, elPlain, elVerdict, elReallyThrow, elLast, elRunning, elPending, elRun, bundleLibs, runBundle, spy, view;
 registry = {
   url: function(arg$){
     var url, name, version, path;
@@ -457,6 +457,73 @@ elVerdict = function(a, b){
     : cls === 'text-danger' ? 'border-danger' : 'border');
   return node.textContent = text;
 };
+elReallyThrow = function(arg$){
+  var url, call;
+  url = arg$.url, call = arg$.call;
+  return new Promise(function(res){
+    var done, hdr, onError, onReject, finish, scope;
+    done = false;
+    hdr = null;
+    onError = null;
+    onReject = null;
+    finish = function(r){
+      if (done) {
+        return;
+      }
+      done = true;
+      clearTimeout(hdr);
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onReject);
+      return res(r);
+    };
+    onError = function(e){
+      return finish({
+        filename: e.filename,
+        line: e.lineno,
+        col: e.colno
+      });
+    };
+    onReject = function(e){
+      var frame;
+      frame = (((e.reason && e.reason.stack) || '').split('\n')[1] || '').trim();
+      return finish({
+        kind: 'unhandled rejection',
+        frame: frame
+      });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onReject);
+    hdr = setTimeout(function(){
+      return finish(null);
+    }, 4000);
+    scope = new rescope({
+      registry: function(arg$){
+        var url;
+        url = arg$.url;
+        return url;
+      },
+      scope: view.get('el-scope').value,
+      delivery: view.get('el-delivery').value
+    });
+    if (!call) {
+      return scope.load([{
+        url: url
+      }]);
+    } else {
+      return scope.load([{
+        url: url
+      }]).then(function(ctx){
+        if (ctx[call] && typeof ctx[call].run === 'function') {
+          return setTimeout(function(){
+            return ctx[call].run();
+          }, 0);
+        } else {
+          return finish(null);
+        }
+      });
+    }
+  });
+};
 elLast = null;
 elRunning = false;
 elPending = null;
@@ -480,6 +547,22 @@ elRun = function(o){
     var a, b;
     a = arg$[0], b = arg$[1];
     return elVerdict(a, b);
+  }).then(function(){
+    var n;
+    n = view.get('el-thrown');
+    if (!view.get('el-throw').checked) {
+      return n.textContent = '';
+    }
+    n.className = "small mb-2 text-secondary";
+    n.textContent = "running it again with nothing catching it ...";
+    return elReallyThrow(o).then(function(r){
+      n.className = "small mb-2 text-secondary";
+      return n.textContent = !r
+        ? "left alone, it did not throw."
+        : r.filename != null
+          ? "thrown for real. the browser reported it at " + r.filename + ":" + r.line + ":" + r.col + " - the same entry is in the console, and those numbers are the engine's, not ours."
+          : "thrown for real, as an " + r.kind + ": " + r.frame + " - the same entry is in the console.";
+    });
   })['finally'](function(){
     var o2;
     elRunning = false;
