@@ -89,7 +89,9 @@ run-scoped = ({url, call}) ->
 run-plain = ({url, call}) ->
   new Promise (res) ->
     caught = null
-    handler = (e) -> caught := e
+    # window 'error' is global, so match the file: another run in flight must not be able to hand
+    # us its error as this file's reference.
+    handler = (e) -> if !caught and (e.filename or '').index-of(url.split('?')[0]) >= 0 => caught := e
     window.addEventListener \error, handler
     node = document.createElement \script
     done = ->
@@ -129,8 +131,15 @@ verdict = (a, b) ->
   node.classList.add (if cls == \text-success => \border-success else if cls == \text-danger => \border-danger else \border)
   node.textContent = text
 
+# one run at a time: both runs write into the same two panes, so overlapping them would interleave
+# the output. a click during a run is remembered rather than dropped - the last thing you clicked
+# is what you get.
 last = null
+running = false
+pending = null
 run = (o) ->
+  if running => return pending := o
+  running := true
   last := o
   view.get(\url).value = o.url
   view.get(\call).value = o.call or ''
@@ -140,6 +149,11 @@ run = (o) ->
     run-scoped(o).then (r) -> render \scoped, r, o.url
     run-plain(o).then (r) -> render \plain, r, o.url
   ] .then ([a, b]) -> verdict a, b
+    .finally ->
+      running := false
+      if pending =>
+        [o2, pending] = [pending, null]
+        run o2
 
 view = new ldview do
   root: document.body

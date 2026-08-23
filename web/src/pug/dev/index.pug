@@ -18,4 +18,6 @@ block script
   +script("https://d3js.org/d3-brush.v2.min.js")
 
   +script("/assets/lib/@plotdb/rescope/dev/index.js")
-  script: include:lsc index.ls
+  //- everything above is loaded with `defer`, so a plain inline script here runs before rescope
+    exists. a module is deferred too, which is what every other page in web/ uses.
+  script(type="module"): include:lsc index.ls

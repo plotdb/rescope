@@ -23,10 +23,14 @@ libs = [
   {url: "https://d3js.org/d3-brush.v2.min.js"}
   {url: "https://cdn.jsdelivr.net/npm/pdmaptw@0.0.2/dist/pdmaptw.min.js"}
   {url: "https://unpkg.com/d3-cloud@1.2.5/build/d3.layout.cloud.js"}
-  {url: "https://zbryikt.github.io/voronoijs/dist/voronoi.min.js"}
+  # voronoijs is a dead link ( 404 ). `load` batches the fetches, so one of these taking the
+  # whole page down with it is what this list costs.
 ]
 
-scope = new rescope!
+# the libs above are given by url, and the default string registry builds its path from
+# name / version / path - it would ask for `/assets/lib/undefined/main/index.min.js`. every other
+# page here passes the same registry for the same reason.
+scope = new rescope registry: ({url}) -> url
 scope.init!
   .then ->
     scope.load libs
