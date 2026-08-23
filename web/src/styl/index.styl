@@ -1,0 +1,20 @@
+// the landing's left hand menu. sticky needs a flex/grid parent that is taller than it is, which
+// the bootstrap row provides; `align-self: flex-start` keeps it from stretching to the row height.
+.rsp-nav
+  position sticky
+  top 1rem
+  align-self flex-start
+  a
+    color #6c757d
+    text-decoration none
+    border-left 2px solid transparent
+    padding-left .75rem
+    &:hover
+      color #007bff
+    &.active
+      color #007bff
+      border-left-color #007bff
+      font-weight 500
+
+.clickable
+  cursor pointer

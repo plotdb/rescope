@@ -1,0 +1,22 @@
+.rsp-nav {
+  position: sticky;
+  top: 1rem;
+  align-self: flex-start;
+}
+.rsp-nav a {
+  color: #6c757d;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  padding-left: 0.75rem;
+}
+.rsp-nav a:hover {
+  color: #007bff;
+}
+.rsp-nav a.active {
+  color: #007bff;
+  border-left-color: #007bff;
+  font-weight: 500;
+}
+.clickable {
+  cursor: pointer;
+}

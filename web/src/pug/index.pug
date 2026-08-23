@@ -1,42 +1,141 @@
 extends /base.pug
 block head
 block body
-  .py-4: .w-1024.rwd.mx-auto.my-4
+  .py-4.w-1200.rwd.mx-auto.px-3
     .row
-      .col-md
-        .text-center: h5 Rendered with D3 v3
-        .aspect-ratio.ratio-1by1: svg#d3v3.w-100.h-100.bg-light.rounded.shadow
-      .col-md
-        .text-center: h5 Rendered with D3 v4
-        .aspect-ratio.ratio-1by1: svg#d3v4.w-100.h-100.bg-light.rounded.shadow
+      .col-lg-3.mb-4
+        nav.rsp-nav
+          .text-uppercase.small.text-secondary.mb-2 rescope
+          ul.list-unstyled.mb-0
+            li: a.d-block.py-1(href="#what") What it does
+            li: a.d-block.py-1(href="#versions") Two versions at once
+            li: a.d-block.py-1(href="#dialog") A dialog, from scoped libs
+            li: a.d-block.py-1(href="#loader-test") Loader test
+            li: a.d-block.py-1(href="#error-line") Error line
+            li: a.d-block.py-1(href="#bundle") Bundle round trip
+          .small.text-secondary.mt-3 Nothing runs until you press a button.
+
+      .col-lg-9
+        section#what.mb-5
+          h3.mb-3 rescope
+          p.
+            rescope loads third party JavaScript and runs it against a substituted global. Two
+            versions of the same library can be live on one page without either of them knowing,
+            and neither of them touches what the page itself has on #[code window].
+          p.
+            A scoped library is fetched, wrapped and evaluated rather than loaded as a
+            #[code &lt;script&gt;], so the interesting questions are about what it can still tell
+            about its surroundings: whether it finds its own file in a stack trace, where it thinks
+            it was loaded from, and what of the host page leaks in. Each section below answers one
+            of those, in this browser, when you press its button.
+
+        section#versions.mb-5
+          h5.mb-2 Two versions at once
+          p.text-secondary.small.mb-3.
+            The same #[code d3] name, bound to v3 on the left and v4 on the right, drawing at the
+            same time. The page's own #[code window.d3] is left alone.
+          .btn.btn-primary.mb-3(ld="run-versions") Load both and draw
+          .row
+            .col-md
+              .text-center.small.text-secondary Rendered with D3 v3
+              .aspect-ratio.ratio-1by1: svg#d3v3.w-100.h-100.bg-light.rounded.shadow
+            .col-md
+              .text-center.small.text-secondary Rendered with D3 v4
+              .aspect-ratio.ratio-1by1: svg#d3v4.w-100.h-100.bg-light.rounded.shadow
+          .small.text-secondary.mt-2(ld="versions-note")
+
+        section#dialog.mb-5
+          h5.mb-2 A dialog, from scoped libs
+          p.text-secondary.small.mb-3.
+            A handful of libraries - bootstrap.native, ldquery, ldcover, ldview - loaded into one
+            scope, plus a small function of ours that uses them. They are only reachable from
+            inside their context.
+          .btn.btn-primary(ld="run-dialog") Load them and open the dialog
+          .small.text-secondary.mt-2(ld="dialog-note")
+
+        section#loader-test.mb-5
+          h5.mb-2 Loader test
+          p.text-secondary.small.mb-3.
+            Load any library by url and see whether it survives being scoped. The samples are real
+            libraries that break assumptions rescope used to make - see
+            #[code web/static/assets/loader-tester/README.md] for what each one does.
+          .input-group.mb-2
+            input.form-control.border(ld="lt-url",placeholder="lib url ( space separated for more than one )")
+            .input-group-append: .btn.border(ld="lt-load") Load
+          .text-secondary.small.d-flex.flex-wrap.mb-3
+            span.mr-2 samples:
+            span.clickable.text-primary.mr-3(ld="lt-sample",data-url="/assets/loader-tester/vis.js") vis.js
+            span.clickable.text-primary.mr-3(ld="lt-sample",data-url="/assets/loader-tester/amcharts-core.js") amcharts-core.js
+            span.clickable.text-primary.mr-3(ld="lt-sample",data-url="https://cdn.zingchart.com/zingchart.min.js https://cdn.zingchart.com/modules/zingchart-chord.min.js") zingchart.js (+chord)
+            span.clickable.text-primary.mr-3(ld="lt-sample",data-url="/assets/dev/jszip.js") jszip
+            span.clickable.text-primary.mr-3(ld="lt-sample",data-url="/js/message-test.js") message-test
+          .p-3.border.rounded.bg-light(ld="lt-result",style="white-space:pre-wrap;font-family:monospace;font-size:.8rem") n/a
+
+        section#error-line.mb-5
+          h5.mb-2 Error line
+          p.text-secondary.small.mb-3.
+            A scoped library does not run as a file of its own, so the only thing keeping its stack
+            traces honest is the #[code //# sourceURL] rescope appends. Each sample throws on
+            purpose; the two panes are the same throw seen through rescope and through a plain
+            #[code &lt;script src&gt;].
+          .row.mb-2
+            .col-sm-4.mb-2
+              label.small.text-secondary.mb-1 scope
+              select.form-control.border(ld="el-scope")
+                option(value="default") default
+                option(value="with") with
+            .col-sm-4.mb-2
+              label.small.text-secondary.mb-1 delivery
+              select.form-control.border(ld="el-delivery")
+                option(value="eval") eval
+                option(value="script") script ( blob )
+            .col-sm-4.mb-2
+              label.small.text-secondary.mb-1 &nbsp;
+              .btn.btn-block.border(ld="el-rerun") Run again
+          .input-group.mb-2
+            input.form-control.border(ld="el-url",placeholder="url of a library that throws")
+            input.form-control.border(ld="el-call",placeholder="global to call .run() on",style="max-width:16rem;flex:0 0 16rem")
+            .input-group-append: .btn.border(ld="el-load") Load
+          .text-secondary.small.d-flex.flex-wrap.mb-3
+            span.mr-2 samples:
+            span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-on-load.js") throws while loading
+            span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-on-call.js",data-call="callThrower") throws from a call, three frames deep
+            span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-minified.js",data-call="minThrower") minified, one line, trailing sourceMappingURL
+            span.clickable.text-primary.mr-3(ld="el-sample",data-url="/assets/error-line/throw-async.js",data-call="asyncThrower") throws out of a timer
+          .p-3.border.rounded.mb-2(ld="el-verdict") pick a sample above.
+          p.small.text-secondary.mb-3.
+            One difference is by design: the wrapper's prologue shares the library's first line, so
+            a throw from line 1 - which is every line of a minified file - reports a column shifted
+            by the length of that prologue. Any other line, and every line number, is its own.
+          .row
+            .col-xl-6.mb-3
+              .small.text-secondary.mb-1 through rescope
+              .p-3.border.rounded.bg-light(ld="el-scoped",style="white-space:pre;overflow-x:auto;font-family:monospace;font-size:.8rem") n/a
+            .col-xl-6.mb-3
+              .small.text-secondary.mb-1 as a plain script, for reference
+              .p-3.border.rounded.bg-light(ld="el-plain",style="white-space:pre;overflow-x:auto;font-family:monospace;font-size:.8rem") n/a
+
+        section#bundle.mb-5
+          h5.mb-2 Bundle round trip
+          p.text-secondary.small.mb-3.
+            #[code bundle] fetches a set of libraries once and records their export names with
+            them. A page loading that bundle knows the names up front, so it never has to run a
+            library a second time to find them out - and never creates the peek window.
+          .btn.btn-primary.mb-3(ld="run-bundle") Build a bundle, then load from it
+          .p-3.border.rounded.bg-light(ld="bundle-result",style="white-space:pre-wrap;font-family:monospace;font-size:.8rem") n/a
+
   .ldcv: .base.w-480: .inner.card: .card-body: .p-4
     .text-center: h1 It Works!
     .py-4
       p This dialog is triggered with the support of a set of JS libraries which are dynamically loaded by rescope.
       p These loaded libraries are only available when we explicitly enter their contexts.
     .btn.btn-lg.btn-block.btn-primary(data-ldcv-set="") Dismiss
-block script
-  //-
-    following JS files are loaded via rescope in JS.
-    only unmark them if you want to test fakescope
-  //-
-    script var useFakescope = true;
-    +script("assets/lib/bootstrap.native/main/bootstrap-native.min.js")
-    +script("assets/lib/bootstrap.ldui/main/bootstrap.ldui.min.js")
-    +script("assets/lib/@loadingio/ldquery/main/ldq.min.js")
-    +script("assets/lib/ldcover/main/index.min.js")
-    +script("assets/lib/ldview/main/index.min.js")
-    +script("js/functest.js")
-    +script("https://d3js.org/d3.v4.js")
-    +script("https://d3js.org/d3-format.v2.min.js")
-    +script("https://d3js.org/d3-array.v2.min.js")
-    +script("https://d3js.org/topojson.v2.min.js")
-    +script("https://d3js.org/d3-color.v1.min.js")
-    +script("https://d3js.org/d3-interpolate.v1.min.js")
-    +script("https://d3js.org/d3-scale-chromatic.v1.min.js")
-    +script("https://d3js.org/d3-dispatch.v2.min.js")
-    +script("https://d3js.org/d3-quadtree.v2.min.js")
-    +script("https://d3js.org/d3-timer.v2.min.js")
-    +script("https://d3js.org/d3-force.v2.min.js")
 
+block script
+  //- `bundle` lives in its own build on top of index.min.js, which base.pug already brought in.
+    the bundle section below needs it; nothing else on the page does.
+  +script([
+    {name: "@plotdb/rescope", version: "dev", path: "bundle.min.js"},
+    {name: "ldview"}
+  ])
   +script("js/index.js")

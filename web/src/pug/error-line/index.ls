@@ -152,7 +152,10 @@ run = (o) ->
     .finally ->
       running := false
       if pending =>
-        [o2, pending] = [pending, null]
+        # one at a time, and `:=` throughout: a destructuring assignment here would declare
+        # `pending` local to this callback, and the queued click would never be replayed.
+        o2 = pending
+        pending := null
         run o2
 
 view = new ldview do
