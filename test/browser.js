@@ -125,6 +125,17 @@ async function run() {
       await page.close();
     }
 
+    // ---- a bundled library, named rather than given a url --------------------------------------
+    group('bundle, by name');
+    {
+      const {page} = await open();
+      const r = await call(page, 'bundledScriptElement');
+      ok(r.works === true, 'a bundled library named through the registry still works', `[${r.exports}]`);
+      ok(String(r.src).endsWith('/libs/marked.js') || `saw ${r.src}`,
+        'and gets a script element carrying the url the registry resolves it to', r.src);
+      await page.close();
+    }
+
     // ---- the script element a scoped library is given ------------------------------------------
     group('script element');
     {

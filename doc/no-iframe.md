@@ -460,6 +460,11 @@ which already inserts and executes for real. A container `<div>` of our own is t
 but puts an anonymous element where a real script would have had `body` - and `parentNode` being
 faithful is the only reason the node is kept at all.
 
+A library out of a bundle needs one extra step: nothing fetches it, so it never learns where it
+came from. `load` asks the registry for its url in that case - no fetch involved, and the bundle
+records `name` / `version` / `path` to answer from. Without it the feature is silently off on
+exactly the path a production page is most likely to be on.
+
 What it does not fix: `currentScript.getAttribute('data-api-key')` and friends, since there is no
 real tag and so no attributes; and a library that scans script tags to decide whether it is already
 loaded will now see its own url. Both known, both accepted.

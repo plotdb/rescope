@@ -463,6 +463,18 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
   return false;
 }, ref$.init = function(){
   return Promise.resolve();
+}, ref$._url = function(o){
+  var r, u, e;
+  if (typeof (r = this._reg.url || this._reg) !== 'function') {
+    return null;
+  }
+  u = null;
+  try {
+    u = r(o);
+  } catch (e$) {
+    e = e$;
+  }
+  return typeof u === 'string' ? u : null;
 }, ref$._ref = function(lib){
   var o, r, ref$;
   o = typeof lib === 'string' ? {
@@ -470,7 +482,7 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
   } : lib;
   if (typeof (r = this._reg.url || this._reg) === 'function') {
     o = (ref$ = import$({}, o), ref$.url = r(o), ref$);
-    if (lib && typeof lib === 'object' && !lib.url) {
+    if (lib && typeof lib === 'object' && !lib.url && typeof o.url === 'string') {
       lib.resolvedUrl = o.url;
     }
   }
@@ -761,6 +773,9 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
     ps = libs.map(function(lib){
       var ref;
       if ((lib.code || lib.gen) && !forceFetch) {
+        if (!lib.url && !lib.resolvedUrl) {
+          lib.resolvedUrl = this$._url(lib);
+        }
         return Promise.resolve();
       }
       ref = this$._ref(lib);

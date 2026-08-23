@@ -292,16 +292,26 @@ rsp.prototype = Object.create(Object.prototype) <<<
   peek-scope: -> false # deprecated
   init: -> Promise.resolve! # deprecated
 
+  # where the registry would send a lib. `rsp.id` reads `url`, so this is kept under its own key -
+  # giving a by-name library a url-shaped id would change how the version machinery dedupes it.
+  _url: (o) ->
+    if typeof(r = @_reg.url or @_reg) != \function => return null
+    u = null
+    try
+      u = r o
+    catch e
+    # the deprecated form of a registry returns a promise from here. that is not a url.
+    return if typeof(u) == \string => u else null
+
   _ref: (lib) ->
     o = if typeof(lib) == \string => {url: lib} else lib
     # promise from r(o) is deprecated. but if it is, url:r(o) is kinda weird. but ...
     if typeof(r = @_reg.url or @_reg) == \function =>
       o = {} <<< o <<< {url: r o}
       # remember where the registry sent us: a library loaded by name has no `url` of its own, and
-      # the script element `load` hands it has to carry one. kept under its own key because
-      # `rsp.id` reads `url`, and giving a by-name library a url-shaped id would change how the
-      # version machinery dedupes it.
-      if lib and typeof(lib) == \object and !lib.url => lib.resolved-url = o.url
+      # the script element `load` hands it has to carry one.
+      if lib and typeof(lib) == \object and !lib.url and typeof(o.url) == \string =>
+        lib.resolved-url = o.url
     # ... it will be return directly since then @_reg.fetch won't exist.
     return if @_reg.fetch => @_reg.fetch(o) else o.url
 
@@ -532,7 +542,12 @@ rsp.prototype = Object.create(Object.prototype) <<<
     _ = (idx = 0) ~>
       if !(libs = segs[idx]) => return Promise.resolve(ctx)
       ps = libs.map (lib) ~>
-        if (lib.code or lib.gen) and !force-fetch => return Promise.resolve!
+        if (lib.code or lib.gen) and !force-fetch =>
+          # a bundled library arrives with its code, so nothing fetches it and `_ref` never runs -
+          # it would never learn where it came from, and the script element would have no url to
+          # carry. the registry can answer that without anything being fetched.
+          if !lib.url and !lib.resolved-url => lib.resolved-url = @_url lib
+          return Promise.resolve!
         ref = @_ref(lib)
         if ref.then => ref.then ~>
           lib.code = it.content

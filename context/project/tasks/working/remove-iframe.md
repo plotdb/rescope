@@ -7,7 +7,7 @@ came out of.
     branch  claude/design-remove-iframe-xz5xar
     version 5.1.0 ( was 5.0.18 )
     state   steps 1-5 shipped and green. step 6 and the ESM path are open.
-    verify  ./build && npm test        -> 96 passed, 0 failed
+    verify  ./build && npm test        -> 98 passed, 0 failed
 
 
 ## the problem this task started from

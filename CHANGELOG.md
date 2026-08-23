@@ -27,7 +27,8 @@
    own inline script. on by default; `scriptElement: false` turns it off. the element's `type` is
    not a JS MIME type, so it is never fetched or executed, and the override of `currentScript` is
    unwound as soon as the library's synchronous run ends - the host page's own scripts never see
-   it. see doc/no-iframe.md.
+   it. libraries that come out of a bundle get one too: nothing fetches them, so `load` asks the
+   registry where they would have come from. see doc/no-iframe.md.
  - generated wrappers now carry `//# sourceURL` and are compiled with an indirect `eval` rather
    than the `Function` constructor, which prepended a header and shifted every reported line by
    two. a library throwing from its line 4 now reports `lib.js:4:9` - the same as if it had been

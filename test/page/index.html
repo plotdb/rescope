@@ -154,6 +154,23 @@ window.loadOrder = async function(){
   return out;
 };
 
+// ---- a library out of a bundle, named rather than given a url ---------------------------------
+// nothing fetches a bundled library, so it never learns where it came from unless `load` asks the
+// registry - and the round trip above says nothing about it, since those libs carry their own url.
+window.bundledScriptElement = async function(){
+  var reg = function(o){ return o.url || ('/libs/' + o.name + '.js') };
+  var lib = {name: 'marked', version: '1', path: 'marked.js'};
+  reset();
+  var code = await new rescope({registry: reg}).bundle([lib]);
+  reset();
+  (0, eval)(code);
+  var ctx = await new rescope({registry: reg}).load([lib]);
+  var node = [].slice.call(document.querySelectorAll('script[data-rescope]'))
+    .filter(function(n){ return /\/libs\/marked\.js$/.test(n.src) })[0];
+  return {exports: Object.keys(ctx), src: node && node.src,
+          works: /<h1/.test((ctx.marked.parse || ctx.marked)('# hi'))};
+};
+
 // ---- the script element a scoped library is given ---------------------------------------------
 window.scriptElement = async function(){
   var out = {}, url = '/fixtures/whereami.js';

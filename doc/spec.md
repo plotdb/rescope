@@ -9,9 +9,11 @@ lib spec
  - `prop`: object with members exported from this lib. in a bundle this is serialized as a list of
    names; `rescope.cache` turns it back into the object form and marks the entry so the peek is
    skipped for it.
- - `resolvedUrl`: where the registry sent a lib that was named rather than given a `url`. recorded
-   by `_ref` so the script element ( `scriptElement` below ) has a url to carry. kept apart from
-   `url` because `rescope.id` reads `url` and would derive a different id from it.
+ - `resolvedUrl`: where the registry sent a lib that was named rather than given a `url`, so the
+   script element ( `scriptElement` below ) has a url to carry. recorded by `_ref` for anything it
+   fetches, and asked for directly by `load` for a lib that arrives with its own `code` - out of a
+   bundle, say - since nothing fetches those. kept apart from `url` because `rescope.id` reads
+   `url` and would derive a different id from it.
  - `prop-cached`: set by `rescope.cache` when `prop` arrived with the entry rather than being
    discovered. `_exports` skips such a lib entirely - it is the flag that keeps a bundled page from
    creating the peek window at all.

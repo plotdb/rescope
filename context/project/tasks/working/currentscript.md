@@ -9,7 +9,7 @@ of this change was in the decisions, not the code.
     branch  claude/design-remove-iframe-xz5xar
     version 5.1.0 ( unreleased - fold this in, do not open a new version )
     state   shipped. default on, `scriptElement: false` to turn it off
-    verify  ./build && npm test        -> 96 passed, 0 failed ( 77 before this task )
+    verify  ./build && npm test        -> 98 passed, 0 failed ( 77 before this task )
 
 
 ## the problem
@@ -104,7 +104,9 @@ Each of these was argued; the reason matters more than the choice.
    real page loading the same script twice would have two tags, but nothing can observe that
    difference.
  - **No URL, no node and no override.** A library handed to rescope as raw `code` has no origin to
-   claim, and inventing one is worse than `null`.
+   claim, and inventing one is worse than `null`. Note what this does *not* cover: a library out of
+   a bundle also arrives with its code, but it does have an origin - the registry knows where it
+   would have been fetched from. See `what shipped`.
  - **The override brackets `gen.apply` only.** Not the fetch ( async, so the fake would be visible
    to the page ), and not the blob script that `delivery: 'script'` runs to *define* the wrapper
    ( the library's body has not run yet at that point ).
@@ -169,6 +171,15 @@ Verified in the browser against the real thing, not just the fixtures: `amcharts
 still fails with `scriptElement: false`. The demo page at `/` is unchanged - both d3 versions draw,
 the dialog opens - and now carries one marker per library it loads, which reads as a useful record
 of what is scoped on the page.
+
+Found afterwards, driving the demo site in a browser rather than the suite: **a library out of a
+bundle got no element at all.** Nothing fetches it - it arrives with its `code` - so `_ref` never
+ran and it never learned where it came from, and the "no url, no node" rule above quietly turned
+the whole feature off for the bundled path. Which is the path a page in production is most likely
+to be on. `load` now asks the registry for the url in that case; nothing is fetched, and the bundle
+already records `name` / `version` / `path` for it to answer from. The suite's existing bundle
+round trip could not have caught this - its libraries are given by `url`, so they had one all
+along; the new case names them instead.
 
 Two things worth knowing that came out of the implementation:
 
