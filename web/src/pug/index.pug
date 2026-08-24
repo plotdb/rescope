@@ -8,7 +8,7 @@ block body
           .text-uppercase.small.text-secondary.mb-2 rescope
           ul.list-unstyled.mb-0
             li: a.d-block.py-1(href="#what") What it does
-            li: a.d-block.py-1(href="#versions") Two versions at once
+            li: a.d-block.py-1(href="#versions") Five versions at once
             li: a.d-block.py-1(href="#dialog") A dialog, from scoped libs
             li: a.d-block.py-1(href="#loader-test") Loader test
             li: a.d-block.py-1(href="#error-line") Error line
@@ -29,18 +29,17 @@ block body
             of those, in this browser, when you press its button.
 
         section#versions.mb-5
-          h5.mb-2 Two versions at once
+          h5.mb-2 Five versions at once
           p.text-secondary.small.mb-3.
-            The same #[code d3] name, bound to v3 on the left and v4 on the right, drawing at the
-            same time. The page's own #[code window.d3] is left alone.
-          .btn.btn-primary.mb-3(ld="run-versions") Load both and draw
-          .row
-            .col-md
-              .text-center.small.text-secondary Rendered with D3 v3
-              .aspect-ratio.ratio-1by1: svg#d3v3.w-100.h-100.bg-light.rounded.shadow
-            .col-md
-              .text-center.small.text-secondary Rendered with D3 v4
-              .aspect-ratio.ratio-1by1: svg#d3v4.w-100.h-100.bg-light.rounded.shadow
+            One #[code d3] name, five major versions of it live at the same time, each drawing into
+            its own box. v4 is loaded the hard way - as the dozen separate modules it ships as -
+            and the rest as single files. The page's own #[code window.d3] is left alone.
+          .btn.btn-primary.mb-3(ld="run-versions") Load all five and draw
+          .row.no-gutters.mx-n1
+            each v in ["3", "4", "5", "6", "7"]
+              .col-12.col-md.px-1.mb-2
+                .text-center.small.text-secondary= "D3 v" + v
+                svg.w-100.bg-light.rounded.shadow(id="d3v" + v, style="height:130px")
           .small.text-secondary.mt-2(ld="versions-note")
 
         section#dialog.mb-5

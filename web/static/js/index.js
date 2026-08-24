@@ -1,4 +1,4 @@
-var registry, esc, note, reset, framesNow, d3pkg, draw, runVersions, dialogPkg, dialogTpl, ensureDialog, runDialog, loaderCheck, loaderResult, loaderLoad, srcCache, source, elFrames, nameOf, elLibFrame, elExcerpt, elFmtFrame, elRender, elScoped, elPlain, elVerdict, elReallyThrow, elLast, elRunning, elPending, elRun, bundleLibs, runBundle, spy, view;
+var registry, esc, note, reset, framesNow, d3sets, draw, runVersions, dialogPkg, dialogTpl, ensureDialog, runDialog, loaderCheck, loaderResult, loaderLoad, srcCache, source, elFrames, nameOf, elLibFrame, elExcerpt, elFmtFrame, elRender, elScoped, elPlain, elVerdict, elReallyThrow, elLast, elRunning, elPending, elRun, bundleLibs, runBundle, spy, view;
 registry = {
   url: function(arg$){
     var url, name, version, path;
@@ -40,35 +40,61 @@ reset = function(){
 framesNow = function(){
   return document.querySelectorAll('iframe').length;
 };
-d3pkg = {
-  v3: {
-    name: 'd3',
-    version: "3",
-    path: "d3.min.js"
-  },
-  v4: [
-    {
-      url: "/assets/dev/d3.v4.js",
-      async: false
-    }, "https://d3js.org/d3-format.v2.min.js", {
-      name: "d3-array",
-      version: "2",
-      path: "dist/d3-array.min.js"
-    }, "https://d3js.org/topojson.v2.min.js", {
-      url: "https://d3js.org/d3-color.v1.min.js",
-      async: false
-    }, {
-      url: "https://d3js.org/d3-interpolate.v1.min.js",
-      async: false
-    }, "https://d3js.org/d3-scale-chromatic.v1.min.js", "https://d3js.org/d3-dispatch.v2.min.js", "https://d3js.org/d3-quadtree.v2.min.js", "https://d3js.org/d3-timer.v2.min.js", "https://d3js.org/d3-force.v2.min.js"
-  ]
-};
+d3sets = [
+  {
+    id: 'd3v3',
+    libs: {
+      name: 'd3',
+      version: "3",
+      path: "d3.min.js"
+    }
+  }, {
+    id: 'd3v4',
+    libs: [
+      {
+        url: "/assets/dev/d3.v4.js",
+        async: false
+      }, "https://d3js.org/d3-format.v2.min.js", {
+        name: "d3-array",
+        version: "2",
+        path: "dist/d3-array.min.js"
+      }, "https://d3js.org/topojson.v2.min.js", {
+        url: "https://d3js.org/d3-color.v1.min.js",
+        async: false
+      }, {
+        url: "https://d3js.org/d3-interpolate.v1.min.js",
+        async: false
+      }, "https://d3js.org/d3-scale-chromatic.v1.min.js", "https://d3js.org/d3-dispatch.v2.min.js", "https://d3js.org/d3-quadtree.v2.min.js", "https://d3js.org/d3-timer.v2.min.js", "https://d3js.org/d3-force.v2.min.js"
+    ]
+  }, {
+    id: 'd3v5',
+    libs: {
+      name: 'd3',
+      version: "5",
+      path: "dist/d3.min.js"
+    }
+  }, {
+    id: 'd3v6',
+    libs: {
+      name: 'd3',
+      version: "6",
+      path: "dist/d3.min.js"
+    }
+  }, {
+    id: 'd3v7',
+    libs: {
+      name: 'd3',
+      version: "7",
+      path: "dist/d3.min.js"
+    }
+  }
+];
 draw = function(d3, id){
   var node, box;
   node = document.getElementById(id);
   node.innerHTML = '';
   box = node.getBoundingClientRect();
-  return d3.select("svg#" + id).selectAll('circle').data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100].map(function(){
+  return d3.select("svg#" + id).selectAll('circle').data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60].map(function(){
     return {
       x: Math.random(),
       y: Math.random(),
@@ -79,7 +105,7 @@ draw = function(d3, id){
   }).attr('cy', function(it){
     return it.y * box.height;
   }).attr('r', function(it){
-    return it.r * 20;
+    return it.r * 9;
   }).attr('fill', function(){
     return '#000';
   });
@@ -91,26 +117,21 @@ runVersions = function(){
     registry: registry
   });
   before = framesNow();
-  return scope.load(d3pkg.v3).then(function(){
-    return scope.load(d3pkg.v4);
-  }).then(function(){
-    return scope.context(d3pkg.v3, function(arg$){
-      var d3;
-      d3 = arg$.d3;
-      draw(d3, 'd3v3');
-      return d3.version;
+  return d3sets.reduce(function(p, set){
+    return p.then(function(){
+      return scope.load(set.libs);
     });
-  }).then(function(v3){
-    return scope.context(d3pkg.v4, function(arg$){
-      var d3;
-      d3 = arg$.d3;
-      draw(d3, 'd3v4');
-      return [v3, d3.version];
-    });
-  }).then(function(arg$){
-    var v3, v4;
-    v3 = arg$[0], v4 = arg$[1];
-    return note('versions-note', "d3 " + v3 + " on the left, d3 " + v4 + " on the right. the page's own `window.d3` is " + typeof window.d3 + ". " + (framesNow() - before) + " iframe(s) created.", 'text-success');
+  }, Promise.resolve()).then(function(){
+    return Promise.all(d3sets.map(function(set){
+      return scope.context(set.libs, function(arg$){
+        var d3;
+        d3 = arg$.d3;
+        draw(d3, set.id);
+        return d3.version;
+      });
+    }));
+  }).then(function(versions){
+    return note('versions-note', versions.join(' / ') + " - five of them, at once. the page's own `window.d3` is " + typeof window.d3 + ". " + (framesNow() - before) + " iframe(s) created.", 'text-success');
   })['catch'](function(e){
     return note('versions-note', e + "", 'text-danger');
   });

@@ -27,47 +27,55 @@ reset = -> rescope._cache = {}; rescope._ver = {map: {}, list: {}}
 frames-now = -> document.querySelectorAll(\iframe).length
 
 
-# ---- two versions at once -----------------------------------------------------------------------
+# ---- five versions at once ----------------------------------------------------------------------
 
-d3pkg =
-  v3: {name: \d3, version: "3", path: "d3.min.js"}
-  v4: [
-    {url: "/assets/dev/d3.v4.js", async: false}, # test object with url
-    "https://d3js.org/d3-format.v2.min.js",      # test plain text
-    {name: "d3-array", version: "2", path: "dist/d3-array.min.js"} # test object with module info
-    "https://d3js.org/topojson.v2.min.js",
-    {url: "https://d3js.org/d3-color.v1.min.js", async: false},
-    {url: "https://d3js.org/d3-interpolate.v1.min.js", async: false},
-    "https://d3js.org/d3-scale-chromatic.v1.min.js",
-    "https://d3js.org/d3-dispatch.v2.min.js",
-    "https://d3js.org/d3-quadtree.v2.min.js",
-    "https://d3js.org/d3-timer.v2.min.js",
-    "https://d3js.org/d3-force.v2.min.js"
-  ]
+# v4 is deliberately the awkward one: the dozen separate modules it ships as, mixed forms ( plain
+# url, object with url, name / version / path ) and `async: false` where order matters. the others
+# are single files, one major version each.
+d3sets =
+  * id: \d3v3, libs: {name: \d3, version: "3", path: "d3.min.js"}
+  * id: \d3v4, libs:
+      [
+        {url: "/assets/dev/d3.v4.js", async: false}, # test object with url
+        "https://d3js.org/d3-format.v2.min.js",      # test plain text
+        {name: "d3-array", version: "2", path: "dist/d3-array.min.js"} # test object with module info
+        "https://d3js.org/topojson.v2.min.js",
+        {url: "https://d3js.org/d3-color.v1.min.js", async: false},
+        {url: "https://d3js.org/d3-interpolate.v1.min.js", async: false},
+        "https://d3js.org/d3-scale-chromatic.v1.min.js",
+        "https://d3js.org/d3-dispatch.v2.min.js",
+        "https://d3js.org/d3-quadtree.v2.min.js",
+        "https://d3js.org/d3-timer.v2.min.js",
+        "https://d3js.org/d3-force.v2.min.js"
+      ]
+  * id: \d3v5, libs: {name: \d3, version: "5", path: "dist/d3.min.js"}
+  * id: \d3v6, libs: {name: \d3, version: "6", path: "dist/d3.min.js"}
+  * id: \d3v7, libs: {name: \d3, version: "7", path: "dist/d3.min.js"}
 
 draw = (d3, id) ->
   node = document.getElementById id
   node.innerHTML = ''
   box = node.getBoundingClientRect!
   d3.select "svg##id" .selectAll \circle
-    .data [0 to 100].map -> {x: Math.random!, y: Math.random!, r: Math.random!}
+    .data [0 to 60].map -> {x: Math.random!, y: Math.random!, r: Math.random!}
     .enter!append \circle
       .attr \cx, -> it.x * box.width
       .attr \cy, -> it.y * box.height
-      .attr \r, -> it.r * 20
+      .attr \r, -> it.r * 9
       .attr \fill, -> \#000
 
 run-versions = ->
   note \versions-note, "loading ..."
   scope = new rescope {registry}
   before = frames-now!
-  scope.load d3pkg.v3
-    .then -> scope.load d3pkg.v4
-    .then -> scope.context d3pkg.v3, ({d3}) -> draw d3, \d3v3; d3.version
-    .then (v3) ->
-      scope.context d3pkg.v4, ({d3}) -> draw d3, \d3v4; [v3, d3.version]
-    .then ([v3, v4]) ->
-      note \versions-note, "d3 #v3 on the left, d3 #v4 on the right. \
+  # one after another rather than all at once: this is the order a page would load them in, and it
+  # keeps the five sets from interleaving their fetches
+  d3sets.reduce ((p, set) -> p.then -> scope.load set.libs), Promise.resolve!
+    .then ->
+      Promise.all d3sets.map (set) ->
+        scope.context set.libs, ({d3}) -> draw d3, set.id; d3.version
+    .then (versions) ->
+      note \versions-note, "#{versions.join ' / '} - five of them, at once. \
         the page's own `window.d3` is #{typeof window.d3}. \
         #{frames-now! - before} iframe(s) created.", \text-success
     .catch (e) -> note \versions-note, "#e", \text-danger
