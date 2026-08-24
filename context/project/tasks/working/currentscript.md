@@ -6,7 +6,7 @@ up should not need the conversation it came out of. The reasoning is here becaus
 of this change was in the decisions, not the code.
 
     repo    plotdb/rescope
-    branch  claude/design-remove-iframe-xz5xar
+    branch  dev/remove-iframe
     version 5.1.0 ( unreleased - fold this in, do not open a new version )
     state   shipped. default on, `scriptElement: false` to turn it off
     verify  ./build && npm test        -> 98 passed, 0 failed ( 77 before this task )

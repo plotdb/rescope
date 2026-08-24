@@ -4,7 +4,7 @@ Handoff note. Written for whoever picks this up next - you should not need the c
 came out of.
 
     repo    plotdb/rescope
-    branch  claude/design-remove-iframe-xz5xar
+    branch  dev/remove-iframe
     version 5.1.0 ( was 5.0.18 )
     state   steps 1-5 shipped and green. step 6 and the ESM path are open.
     verify  ./build && npm test        -> 98 passed, 0 failed
