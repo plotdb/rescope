@@ -65,6 +65,10 @@ Return promise from a registry function call for a directly content resolving - 
 `registry` can also be an object with `url` and optionally `fetch` as a member function. Check `@plotdb/block` and `@plotdb/registry` for advanced registry usage.
 
 
+A lib that was given a `url` of its own keeps it: the string prefix form skips itself for those,
+and a function form is expected to do the same ( `function(o) { return o.url || ... }` ), since the
+registry's answer is taken over whatever the lib carried.
+
 where registry, if provided, should be a function:
 
  - accepting an object with following members:
@@ -169,23 +173,70 @@ rescope was verified to run under `script-src 'nonce-…' 'strict-dynamic'` and 
 Loading becomes asynchronous in this mode, and if the policy blocks the blob the load rejects with
 a message saying which grant is missing.
 
+## Script Element
+
+A scoped library never becomes a `<script>` element of its own - it is fetched, wrapped and
+evaluated - so every way it has of asking where it came from used to answer wrong.
+`document.currentScript` is null inside an `eval`, and the older idiom ( the last `<script>` in the
+document ) points at whatever the page happens to end with. Libraries derive their base url from
+one of those: `amcharts-core.js` computes its webpack `publicPath` that way and could not load at
+all.
+
+So for the length of a library's run, rescope makes it look like it was loaded by a script of its
+own:
+
+ - an inert `<script type="application/rescope-marker" src="<the library's url>">` is appended to
+   the document. The type is not a JS MIME type, so the browser neither fetches nor executes it,
+   while `.src`, `getAttribute('src')` and `document.scripts` all answer as they would for any
+   script. It stays there afterwards, as a real script element would - a library that captures
+   `document.currentScript` and uses it from a later timer needs it still attached.
+ - `document.currentScript` answers with that element, for the length of the library's
+   **synchronous run only**. It is a page wide slot that belongs to the host, and a real script
+   leaves it at `null` when it finishes, so it is restored the same way.
+
+This is on by default. `null` is not a neutral answer - a library that asks and gets nothing falls
+through to the broken heuristic or crashes - and a library that never asks cannot tell the
+difference. Turn it off with:
+
+    new rescope({scriptElement: false});
+
+What it does not fix: `currentScript.getAttribute('data-api-key')` and friends, since there is no
+real tag and so no attributes to hand back; and a library that scans script tags to decide whether
+it is already loaded will now find its own url. See `doc/no-iframe.md` for the reasoning and for
+the options that were considered and rejected.
+
+## Stack Traces
+
+A library that throws reports its own file, line and column, the same place a plain
+`<script src>` would report - the generated wrapper carries `//# sourceURL` and is compiled with an
+indirect `eval` rather than the `Function` constructor, which used to shift every line by two. This
+holds for a library that throws while loading as well as for one that throws from a later call, and
+it is the browser's own attribution: `window.onerror` reports the library's file in `filename`, and
+devtools registers it as a real source, so breakpoints survive a reload and the library's own
+`sourceMappingURL` resolves against its real url.
+
+One difference is by design: the wrapper's prologue has to share the library's first line to keep
+every other line number honest, so a throw from line 1 - which is every line of a minified file -
+reports a column shifted by the length of that prologue. Every line number, and every column on
+every other line, is the library's own.
+
+`web/` has a page that runs a thrower both ways side by side and compares the two traces.
+
 ## Caching
 
-Instead of downloading libraries everytime, you can also precache libraries into a single js file.
+Instead of downloading libraries every time, you can precache them into a single js file. That is
+what `bundle` below produces, and what it emits is a series of `rescope.cache` calls:
 
-After downloading all necessary libraries, get js for caching by:
+    rescope.cache({
+      url: "some-url",              // or name / version / path
+      code: "...",                  // the library's source
+      prop: ["names", "it", "defines"]   // optional; skips the peek when present
+    });
 
-    ret = rescope.cacheDump();
-
-the return value `ret` is the runnable JS string which insert cached libraries into `rescope` class. Or, manually inject cache by calling:
-
-    rescope.cache(
-      "some-url",
-      {
-        code: "code",
-        vars: [list of string for available variable names in dependency]
-      }
-    )
+`rescope.cache` takes one object and returns the cached entry. **Note**: earlier revisions of this
+README documented a `rescope.cacheDump()` and a two argument `rescope.cache(url, {code, vars})`.
+Neither is in the source - `bundle` is the supported way to produce a cache file, and `cache` takes
+a single object.
 
 ## Bundling
 
@@ -201,9 +252,15 @@ once rather than twice.
 
 ## Polyfills
 
-use `prejs` when constructing for inserting pre-required JS into both host and delegate environment:
+`preloads` is a list of scripts to put into the peek window before anything is peeked there, for
+libraries that need something present at parse time to define what they define:
 
-    new rescope({prejs: ["https://...", ...]});
+    new rescope({preloads: ["https://...", ...]});
+
+It only affects the peek window - the host is untouched - and it does nothing under
+`scope: "with"` or for a bundle carrying `prop`, since neither of those peeks. **Note**: earlier
+revisions of this README called this option `prejs` and said it applied to the host as well;
+neither is true of the source.
 
 
 

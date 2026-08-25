@@ -2,6 +2,27 @@
 
 ## v5.1.0
 
+Nothing was removed or renamed. Two defaults moved, though - the first two entries below are what
+to read before upgrading.
+
+ - **behaviour change**: a scoped library is now handed a `<script>` element of its own to be found
+   by. While it runs, `document.currentScript` answers with an inert element carrying the library's
+   real url, and that element stays in the document where the older
+   `getElementsByTagName('script')` idiom finds it too. Libraries derive their base url this way -
+   `amcharts-core.js` could not load at all without it, since `currentScript` is null inside an
+   `eval` and the fallback found the page's own inline script. On by default, because `null` is not
+   a neutral answer: a library that asks and gets nothing falls through to a worse heuristic or
+   crashes, and one that never asks cannot tell the difference. `scriptElement: false` turns it
+   off. The element's `type` is not a JS MIME type, so it is never fetched or executed, and the
+   `currentScript` override is unwound as soon as the library's synchronous run ends - the host
+   page's own scripts never see it. Libraries out of a bundle get one too: nothing fetches them, so
+   `load` asks the registry where they would have come from. See doc/no-iframe.md.
+ - **behaviour change**: the string form of `registry` ( which is also the default, `/assets/lib/` )
+   built its path from `name` / `version` / `path` and ignored a lib's own `url`, while `_ref` takes
+   the registry's answer over whatever the lib carried - so `new rescope!` loading `{url: '...'}`
+   fetched `/assets/lib/undefined/main/index.min.js` and 404'd. A lib given a url now keeps it. A
+   function registry could always express this itself and every caller of one already did
+   ( `({url, name}) -> url or ...` ); this is the same rule for the form that could not.
  - no longer create an iframe just to read a pristine list of window property names. `proxin` now
    classifies the target window's own property descriptors instead, which was verified to give the
    same answer ( 1211 names against the iframe's 1192, the only platform name missed being
@@ -9,7 +30,8 @@
  - the peek window is created on demand and reused, so a page that never needs one never gets one.
  - `bundle` now records each library's export names as `prop`. a page loading such a bundle knows
    them up front, so it skips the peek entirely: no iframe, and each library runs once instead of
-   twice. measured: six libraries from a bundle, zero iframes.
+   twice. measured: six libraries from a bundle, zero iframes. an older rescope ignores the field
+   and peeks as it always did, so bundles stay readable both ways.
  - add `scope: 'with'`. the library runs inside `with(scope)`, so every free identifier - `var`
    declarations included - resolves through the proxy. no peek, no iframe at all, and the host
    page's own globals stop leaking into scoped code ( `window.parent` no longer reaches the real
@@ -19,27 +41,16 @@
    being compiled, so CSP sees a script load rather than `eval`. combined with `scope: 'with'` or
    a bundle that carries `prop`, rescope runs with no `'unsafe-eval'` grant at all - verified under
    `nonce` + `strict-dynamic` and under `script-src 'self' 'unsafe-inline' blob:`.
- - fix bug: the string form of `registry` ( which is also the default, `/assets/lib/` ) built its
-   path from `name` / `version` / `path` and ignored a lib's own `url`, while `_ref` takes the
-   registry's answer over whatever the lib carried - so `new rescope!` loading `{url: '...'}`
-   fetched `/assets/lib/undefined/main/index.min.js`. a lib given a url now keeps it. a function
-   registry could always express this itself and every caller of one already did
-   ( `({url, name}) -> url or ...` ); this is the same rule for the form that could not.
- - a scoped library is now handed a `<script>` element of its own to be found by: while it runs,
-   `document.currentScript` answers with an inert element carrying the library's real url, and
-   that element stays in the document where the older `getElementsByTagName('script')` idiom finds
-   it too. libraries derive their base url this way - `amcharts-core.js` could not load at all
-   without it, since `currentScript` is null inside an `eval` and the fallback found the page's
-   own inline script. on by default; `scriptElement: false` turns it off. the element's `type` is
-   not a JS MIME type, so it is never fetched or executed, and the override of `currentScript` is
-   unwound as soon as the library's synchronous run ends - the host page's own scripts never see
-   it. libraries that come out of a bundle get one too: nothing fetches them, so `load` asks the
-   registry where they would have come from. see doc/no-iframe.md.
  - generated wrappers now carry `//# sourceURL` and are compiled with an indirect `eval` rather
    than the `Function` constructor, which prepended a header and shifted every reported line by
    two. a library throwing from its line 4 now reports `lib.js:4:9` - the same as if it had been
-   loaded with a plain `<script src>` - and devtools registers it as a real source, so breakpoints
-   survive a reload and the library's own sourceMappingURL resolves.
+   loaded with a plain `<script src>`, down to the column, and confirmed against `window.onerror`'s
+   own `filename` / `lineno` / `colno` rather than against a parsed stack string. devtools
+   registers it as a real source, so breakpoints survive a reload and the library's own
+   sourceMappingURL resolves.
+ - the peek's `eval` carries the same `sourceURL`. the peek runs a library *before* the wrapper
+   does, so a library that throws while **loading** throws out of the peek, and that is the trace
+   the caller gets - it used to name rescope's own file with no line of the library's in it.
  - fix bug: intrinsics were handed out as bound wrappers, so `global.Object === Object` was false.
    libraries fingerprint their global that way; lodash concluded it had not been given a real
    global, fell back to `Function('return this')()`, and installed itself on the host page -
