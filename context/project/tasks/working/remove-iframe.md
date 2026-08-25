@@ -83,10 +83,12 @@ restores that a throwing library skipped; `__win` leaking onto the real window; 
     doc/spec.md         lib fields and constructor options
     test/               the suite. test/README.md says what it covers
     dev/noframe.js      the standalone prototype the measurements came from. not used at run time
-    web/                the demo site ( `npm start` ). `/` is the two-d3-versions demo,
-                        `/loader-tester/` loads a url you give it - its README records which real
-                        libraries can not be scoped and why - and `/error-line/` runs a thrower
-                        both through rescope and as a plain script and compares the traces
+    web/                the demo site ( `npm start` ). one page now: five d3 versions at once, a
+                        dialog built from scoped libs, a loader test that takes any url - the
+                        README under `static/assets/loader-tester/` records which real libraries
+                        can not be scoped and why - an error line section that runs a thrower both
+                        through rescope and as a plain script and compares the traces, and a
+                        bundle round trip. every section runs on a click
     CHANGELOG.md        v5.1.0
 
 

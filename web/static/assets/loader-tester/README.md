@@ -1,4 +1,5 @@
-Libraries that do not survive being scoped, and why. Load them from `/loader-tester/`.
+Libraries that do not survive being scoped, and why. The landing page's `Loader test`
+section loads them ( `npm start`, then #loader-test ).
 
  - **zingchart**: sets `window.ZC`, then reads `ZC`.
  - **visjs**: sets `window['...']` under names that are not legal variable names.

@@ -21,7 +21,7 @@ evaluated. So every way a library has of asking "where did I come from?" answers
     document.getElementsByTagName('script')[last]   // whatever the page happens to end with
 
 `amcharts-core.js` is the case that made this visible ( it is in `web/static/assets/loader-tester/`,
-and `/loader-tester/` loads it ). It derives its webpack `publicPath` from exactly those two:
+and the landing page's `Loader test` section loads it ). It derives its webpack `publicPath` from exactly those two:
 
     i.p = (function(){ if (document.currentScript) return document.currentScript;
                        var t = document.getElementsByTagName("script"); return t[t.length-1] })().src
@@ -167,7 +167,8 @@ run before it, port numbers aside - the six real libraries, the iframe counts, a
 policies. The marker element trips no policy, which follows from it never being fetched.
 
 Verified in the browser against the real thing, not just the fixtures: `amcharts-core.js` from
-`/loader-tester/` loads and exports `am4core` in `default`, `with` and `delivery: 'script'`, and
+the landing's loader test loads it and it exports `am4core` in `default`, `with` and
+`delivery: 'script'`, and
 still fails with `scriptElement: false`. The demo page at `/` is unchanged - both d3 versions draw,
 the dialog opens - and now carries one marker per library it loads, which reads as a useful record
 of what is scoped on the page.
