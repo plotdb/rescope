@@ -184,12 +184,13 @@ along; the new case names them instead.
 
 Two things worth knowing that came out of the implementation:
 
- - **jsdom's peek window is a degraded context**: no `window`, no `document`, and top level `var`s
-   do not attach to it. In the default mode it is therefore the peek's answer that reaches the
-   caller there, not the wrapper's, so the node half asserts this in `with` mode only and prints a
-   note. The browser half covers all three. That context is also shared with the harness's own
-   scope - a fixture declaring a common identifier collides with whatever the runner declared,
-   which is why `whereami.js` uses `__d`.
+ - **jsdom's peek window looked like a degraded context** - no `window`, no `document`, top level
+   `var`s not attaching, and the whole thing sharing the harness's own scope, which is why
+   `whereami.js` uses a `__d` guard. That turned out to be `runScripts`, not jsdom: a JSDOM built
+   without it evaluates an iframe's `contentWindow.eval` in a global that is not that window. With
+   `runScripts: 'outside-only'` the peek window is a real Window and the node half checks the
+   default mode like the browser half does. Found while testing a release candidate - see
+   `README.md` under Node, since it bites any node caller on jsdom 30, not just this suite.
  - the element carries cross-origin urls ( `https://d3js.org/...` ) with no CORS or CSP
    consequence, again because nothing is ever fetched.
 

@@ -306,6 +306,23 @@ name itself, and it answers `window`, `self`, `globalThis`, `global`, `top`, `pa
 with itself. `window.parent === window` inside a scoped library, and the test suite pins that.
 
 
+## Under Node
+
+`rescope.env(window)` takes the window to work against - under node that is a jsdom window:
+
+    const {JSDOM} = require('jsdom');
+    const rescope = require('@plotdb/rescope');
+    const dom = new JSDOM('<body></body>', {url: 'http://localhost', runScripts: 'outside-only'});
+    rescope.env(dom.window);
+
+`runScripts` is not optional for the default scoping mode. The peek needs a window that can
+evaluate the library, and with jsdom's default ( no `runScripts` ) an iframe's
+`contentWindow.eval` runs somewhere whose assignments never reach that window - so the peek learns
+no names and `load` hands back an empty context, silently. `outside-only` is enough;
+`dangerously` also works. Measured on jsdom 30; jsdom 26 happened to work either way.
+
+`scope: "with"` and bundles carrying `prop` do not peek at all, so neither needs any of this.
+
 ## Tests
 
     ./build && npm test

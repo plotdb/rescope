@@ -19,7 +19,12 @@ async function run() {
   try { rescope = require('../dist/node.js'); }
   catch (e) { ok(String(e).slice(0, 120), 'dist/node.js loads'); return; }
 
-  const dom = new jsdom.JSDOM('<body></body>', {url: 'http://localhost'});
+  // `runScripts` matters: without it, jsdom 30 evaluates `iframe.contentWindow.eval` in a global
+  // whose assignments never land on that window, so the peek learns no names at all and the
+  // default mode hands back an empty context. jsdom 26 was permissive enough to work either way,
+  // which is the only reason this suite passed without it. `outside-only` is enough, and is what
+  // the README tells a node caller to use.
+  const dom = new jsdom.JSDOM('<body></body>', {url: 'http://localhost', runScripts: 'outside-only'});
   rescope.env(dom.window);
   const frames = () => dom.window.document.querySelectorAll('iframe').length;
 
@@ -42,24 +47,20 @@ async function run() {
 
   // the script element a scoped library is given. jsdom's peek window has no globals of its own,
   // so the fixture guards `document`; the run that has to answer is the wrapper's.
-  // only `with` here: jsdom's peek window is a degraded context with no `document` of its own, so
-  // in the default mode it is the peek's answer that reaches the caller, not the wrapper's. the
-  // browser half checks all three modes, and that is the environment the question belongs to.
-  {
+  for (const mode of ['default', 'with']) {
     rescope._cache = {}; rescope._ver = {map: {}, list: {}};
     const rsp = new rescope({
       registry: o => require('path').join(__dirname, 'fixtures', `${o.name}.js`),
-      scope: 'with',
+      scope: mode,
     });
     try {
       const ctx = await rsp.load([{name: 'whereami'}]);
       const seen = ctx.whereAmI && ctx.whereAmI.currentScript;
       ok(String(seen).endsWith('whereami.js') || `saw ${seen}`,
-        "node/with: document.currentScript names the library's url ( by name, via the registry )");
+        `node/${mode}: document.currentScript names the library's url ( by name, via the registry )`);
       ok(dom.window.document.currentScript === null || 'left behind on the host document',
-        "node/with: and the host's currentScript is null again afterwards");
-    } catch (e) { ok(String(e).split('\n')[0].slice(0, 120), 'node/with: currentScript'); }
-    note("jsdom's peek window has no document, so the default mode can not be checked here");
+        `node/${mode}: and the host's currentScript is null again afterwards`);
+    } catch (e) { ok(String(e).split('\n')[0].slice(0, 120), `node/${mode}: currentScript`); }
   }
 
   // a string registry builds its path from name / version / path, and `_ref` replaces a lib's
