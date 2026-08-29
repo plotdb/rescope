@@ -213,7 +213,8 @@ indirect `eval` rather than the `Function` constructor, which used to shift ever
 holds for a library that throws while loading as well as for one that throws from a later call, and
 it is the browser's own attribution: `window.onerror` reports the library's file in `filename`, and
 devtools registers it as a real source, so breakpoints survive a reload and the library's own
-`sourceMappingURL` resolves against its real url.
+`sourceMappingURL` resolves against its real url ( with a caveat about what that map then points
+at - see Source Maps below ).
 
 One difference is by design: the wrapper's prologue has to share the library's first line to keep
 every other line number honest, so a throw from line 1 - which is every line of a minified file -
@@ -221,6 +222,26 @@ reports a column shifted by the length of that prologue. Every line number, and 
 every other line, is the library's own.
 
 `web/` has a page that runs a thrower both ways side by side and compares the two traces.
+
+### Source Maps
+
+The same first-line shift applies to a library's own source map, and there it matters more, because
+a minified file is *all* line 1.
+
+The map is still **found**: `//# sourceMappingURL=purify.js.map` is resolved against the script's
+url, and thanks to `//# sourceURL` that is the library's real url - so it resolves exactly where it
+would for a plain `<script src>` ( without it, a `blob:` delivery would resolve it against the blob
+url and break ). The comment survives too: minified files routinely end with it and no trailing
+newline, and rescope puts a newline after the library's code before anything of its own.
+
+What is off is the **positions inside** the map. Mappings are recorded against the generated file,
+which is now the wrapper: line numbers still match, but every column on line 1 is shifted by the
+length of the wrapper's prologue - so for a minified library the whole map points slightly earlier
+in the original source than it should. The shift grows with the number of names the library exports
+in the default mode, and is much smaller under `scope: 'with'`.
+
+This only affects what devtools shows you when it applies the map; it does not affect the stack
+trace's own file, line or column, and it does not affect the running code.
 
 ## Caching
 

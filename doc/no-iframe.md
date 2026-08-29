@@ -391,6 +391,32 @@ wrapper is registered with `url: libs/thrower.js` and carries the library's own
 library URL and DevTools can show original sources. Delivered as a bare blob without `sourceURL`,
 that same relative map reference would resolve against the `blob:` URL instead and break.
 
+### the source map is found, but its columns are off on line 1
+
+Resolving the map is only half of it. A source map maps *generated* ( line, column ) to original,
+and after wrapping, the generated file is the wrapper, not the library. The same invariant that
+keeps line numbers honest is what breaks the columns:
+
+ - **lines are fine.** The prologue shares the library's first line, so library line N is wrapper
+   line N, and every mapping on line 2 and beyond lands where it should.
+ - **line 1 is shifted by the length of the prologue.** A lookup at wrapper column C returns the
+   mapping recorded for column C, while the library text actually sitting there is the library's
+   column C - prologue length. So every position on line 1 resolves to somewhere earlier in the
+   original source.
+
+That is worst for exactly the files that ship maps: a minified library *is* one line, so the whole
+map is off. The shift is not a constant either - the default-mode prologue declares one `var` and
+one save/restore per exported name, so it grows with the library's export count; `scope: 'with'`
+emits only `with(scope){`; `delivery: 'script'` adds the `window[registry][id] = function(...)`
+assignment on top. Measured on the landing page's minified thrower in default mode: a plain
+`<script src>` reports column 38, through rescope it is column 333 - 295 characters of prologue.
+
+Fixable, and not by moving the prologue - putting it on its own line trades a column error for a
+line error on every line. The shift is known at codegen time, so the mechanical fix is to fetch the
+library's map, add the prologue length to every generated column on line 1, re-encode the VLQ
+mappings and point a `sourceMappingURL` of our own at the result as a `data:` URI. Not implemented:
+it needs a map parser and encoder in the browser bundle, for a payoff limited to devtools display.
+
 Two smaller notes:
 
  - the peek pass parses and runs every library a second time, so DevTools shows two copies of it
