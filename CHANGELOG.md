@@ -47,7 +47,10 @@ to read before upgrading.
    loaded with a plain `<script src>`, down to the column, and confirmed against `window.onerror`'s
    own `filename` / `lineno` / `colno` rather than against a parsed stack string. devtools
    registers it as a real source, so breakpoints survive a reload and the library's own
-   sourceMappingURL resolves.
+   sourceMappingURL resolves against the real library url rather than against a `blob:` one. what
+   that map then points at is a half-step behind: line numbers match, but the wrapper's prologue
+   shares the library's first line, so every column mapped on line 1 - which is every column of a
+   minified file - is off by the prologue's length. see README's Source Maps section.
  - the peek's `eval` carries the same `sourceURL`. the peek runs a library *before* the wrapper
    does, so a library that throws while **loading** throws out of the peek, and that is the trace
    the caller gets - it used to name rescope's own file with no line of the library's in it.
