@@ -138,7 +138,7 @@ pollution to hide or restore, and it runs under every policy tested including
 The limits are real: the library must ship an ESM build; bare-specifier dependencies need an import
 map; the context comes from module exports rather than from globals a script leaked, so `ctx`
 semantics change; and a second instance means a second URL. This is the `import ( ESModule )` line
-already sitting in `TODO.md`, and it is worth noting that it settles the iframe question, the
+already sitting in `context/project/tasks/todo/`, and it is worth noting that it settles the iframe question, the
 `eval` question and the `with` question in one move - for the subset of libraries that can use it.
 
 ### (3) plain `<script src>` with save / restore - zero code generation, and a real regression

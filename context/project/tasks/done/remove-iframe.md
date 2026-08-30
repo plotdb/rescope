@@ -126,13 +126,16 @@ Each of these cost a debugging session. They are commented at their site too.
 
 ## what is open
 
+Carried over to `tasks/todo/iframe-removal-and-scoping-approach.md`; kept here as the record of
+what v5.1.0 knowingly did not do.
+
 In the order I would take them.
 
 1. **`delegate` / `useDelegateLib`.** README documents them; **nothing in `src` reads either name**.
    Decide: implement, or delete them from the README. They are the one remaining case that
    genuinely wants a second document, so this is a product decision, not a cleanup. Flagged in
    README already so nobody is misled meanwhile.
-2. **The ESModule path** ( `TODO.md` ). For a library shipping ESM, `import('./lib.js?a')` and
+2. **The ESModule path** ( `tasks/todo/` ). For a library shipping ESM, `import('./lib.js?a')` and
    `import('./lib.js?b')` are already two independent instances that never touch `window` -
    verified. That removes the peek, the `eval` and the `with` in one move, for the subset of
    libraries that can use it. `ctx` semantics change ( module exports rather than leaked globals ),
