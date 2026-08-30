@@ -65,6 +65,10 @@ Return promise from a registry function call for a directly content resolving - 
 `registry` can also be an object with `url` and optionally `fetch` as a member function. Check `@plotdb/block` and `@plotdb/registry` for advanced registry usage.
 
 
+A lib that was given a `url` of its own keeps it: the string prefix form skips itself for those,
+and a function form is expected to do the same ( `function(o) { return o.url || ... }` ), since the
+registry's answer is taken over whatever the lib carried.
+
 where registry, if provided, should be a function:
 
  - accepting an object with following members:
@@ -111,6 +115,15 @@ By default all script are loaded asynchronously. You can force them loaded in sy
 
 By default `rescope` uses iframe window to preload libraries and peek variables they defined. The iframe is called delegate window. Apparently behavior for the host and the delegate is not the same.
 
+Since v5.1.0 this window is created only when something actually has to be peeked, so it never appears for libraries loaded from a bundle ( their export names are already recorded ) nor under `scope: "with"`. `proxin` no longer creates one at all.
+
+**Note**: `delegate` and `useDelegateLib` below are not implemented in the current source - `proxin`
+reads `iframe` / `target`, and nothing reads either of these names. They are kept here as the record
+of an intended API; treat the rest of this section as a design note rather than as documentation of
+what the code does today. What does work for running libraries against another window is passing
+that window to `proxin` as `target` ( with its `iframe`, if it has one ), which is how
+`@plotdb/block` uses it.
+
 We specify an option `delegate` and set it to false to tell `@plotdb/rescope` that this instance doesn't use delegate ( itself is a delegate ):
 
     new rescope({delegate: false});
@@ -126,23 +139,125 @@ Even with `useDelegateLib` set to true, you can still enter host context by sett
     res = new rescope({useDelegateLib: true});
     res.context("some-lib", false, function() { ... });
 
+## Scoping Mode
+
+By default, `rescope` learns which names a library defines by running it once in a separate window
+( the peek ), then pre-declares those names in the wrapper it builds around the library. Set
+`scope` to `with` to skip that step entirely:
+
+    new rescope({scope: "with"});
+
+The library then runs inside `with(scope)`, so every free identifier - including its own top level
+`var` declarations - resolves through the scope proxy. Nothing has to be discovered in advance, so
+no extra window is created and the library runs once instead of twice. It also isolates better:
+the host page's own globals stay invisible to the library, and `window.parent` no longer reaches
+the real window.
+
+The cost is library run time. Every function inside a `with` block loses fast variable lookup for
+its whole lifetime - a `moment` formatting loop measured about 3x slower. Use it where load time
+and isolation matter more than throughput, or where no window can be created at all.
+
+## Delivery
+
+By default the wrapper around a library is compiled with `eval`. Set `delivery` to `script` to have
+it handed to a script element through a blob URL instead:
+
+    new rescope({delivery: "script"});
+
+The page's Content Security Policy then sees a script load rather than `eval`. Note this only
+covers the wrapper: to run with no `'unsafe-eval'` grant at all, the peek has to go too, so combine
+it with `scope: "with"` or with a bundle that carries `prop` ( see below ). With that combination
+rescope was verified to run under `script-src 'nonce-…' 'strict-dynamic'` and under
+`script-src 'self' 'unsafe-inline' blob:`.
+
+Loading becomes asynchronous in this mode, and if the policy blocks the blob the load rejects with
+a message saying which grant is missing.
+
+## Script Element
+
+A scoped library never becomes a `<script>` element of its own - it is fetched, wrapped and
+evaluated - so every way it has of asking where it came from used to answer wrong.
+`document.currentScript` is null inside an `eval`, and the older idiom ( the last `<script>` in the
+document ) points at whatever the page happens to end with. Libraries derive their base url from
+one of those: `amcharts-core.js` computes its webpack `publicPath` that way and could not load at
+all.
+
+So for the length of a library's run, rescope makes it look like it was loaded by a script of its
+own:
+
+ - an inert `<script type="application/rescope-marker" src="<the library's url>">` is appended to
+   the document. The type is not a JS MIME type, so the browser neither fetches nor executes it,
+   while `.src`, `getAttribute('src')` and `document.scripts` all answer as they would for any
+   script. It stays there afterwards, as a real script element would - a library that captures
+   `document.currentScript` and uses it from a later timer needs it still attached.
+ - `document.currentScript` answers with that element, for the length of the library's
+   **synchronous run only**. It is a page wide slot that belongs to the host, and a real script
+   leaves it at `null` when it finishes, so it is restored the same way.
+
+This is on by default. `null` is not a neutral answer - a library that asks and gets nothing falls
+through to the broken heuristic or crashes - and a library that never asks cannot tell the
+difference. Turn it off with:
+
+    new rescope({scriptElement: false});
+
+What it does not fix: `currentScript.getAttribute('data-api-key')` and friends, since there is no
+real tag and so no attributes to hand back; and a library that scans script tags to decide whether
+it is already loaded will now find its own url. See `doc/no-iframe.md` for the reasoning and for
+the options that were considered and rejected.
+
+## Stack Traces
+
+A library that throws reports its own file, line and column, the same place a plain
+`<script src>` would report - the generated wrapper carries `//# sourceURL` and is compiled with an
+indirect `eval` rather than the `Function` constructor, which used to shift every line by two. This
+holds for a library that throws while loading as well as for one that throws from a later call, and
+it is the browser's own attribution: `window.onerror` reports the library's file in `filename`, and
+devtools registers it as a real source, so breakpoints survive a reload and the library's own
+`sourceMappingURL` resolves against its real url ( with a caveat about what that map then points
+at - see Source Maps below ).
+
+One difference is by design: the wrapper's prologue has to share the library's first line to keep
+every other line number honest, so a throw from line 1 - which is every line of a minified file -
+reports a column shifted by the length of that prologue. Every line number, and every column on
+every other line, is the library's own.
+
+`web/` has a page that runs a thrower both ways side by side and compares the two traces.
+
+### Source Maps
+
+The same first-line shift applies to a library's own source map, and there it matters more, because
+a minified file is *all* line 1.
+
+The map is still **found**: `//# sourceMappingURL=purify.js.map` is resolved against the script's
+url, and thanks to `//# sourceURL` that is the library's real url - so it resolves exactly where it
+would for a plain `<script src>` ( without it, a `blob:` delivery would resolve it against the blob
+url and break ). The comment survives too: minified files routinely end with it and no trailing
+newline, and rescope puts a newline after the library's code before anything of its own.
+
+What is off is the **positions inside** the map. Mappings are recorded against the generated file,
+which is now the wrapper: line numbers still match, but every column on line 1 is shifted by the
+length of the wrapper's prologue - so for a minified library the whole map points slightly earlier
+in the original source than it should. The shift grows with the number of names the library exports
+in the default mode, and is much smaller under `scope: 'with'`.
+
+This only affects what devtools shows you when it applies the map; it does not affect the stack
+trace's own file, line or column, and it does not affect the running code.
+
 ## Caching
 
-Instead of downloading libraries everytime, you can also precache libraries into a single js file.
+Instead of downloading libraries every time, you can precache them into a single js file. That is
+what `bundle` below produces, and what it emits is a series of `rescope.cache` calls:
 
-After downloading all necessary libraries, get js for caching by:
+    rescope.cache({
+      url: "some-url",              // or name / version / path
+      code: "...",                  // the library's source
+      prop: ["names", "it", "defines"]   // optional; skips the peek when present
+    });
 
-    ret = rescope.cacheDump();
-
-the return value `ret` is the runnable JS string which insert cached libraries into `rescope` class. Or, manually inject cache by calling:
-
-    rescope.cache(
-      "some-url",
-      {
-        code: "code",
-        vars: [list of string for available variable names in dependency]
-      }
-    )
+`rescope.cache` takes one object and returns the cached entry. **Note**: earlier revisions of this
+README documented a `rescope.cacheDump()` and a two argument `rescope.cache(url, {code, vars})`.
+Neither is in the source - `bundle` is the supported way to produce a cache file, and `cache` takes
+a single object.
 
 ## Bundling
 
@@ -151,12 +266,22 @@ To bundle, load `bundle.js` and use `bundle` API:
     rsp = new rescop(...)
     rsp.bundle [{ ... }] .then (code) ->
 
+The bundle records each library's export names alongside its code. A page loading the bundle
+therefore already knows them, and skips the peek: it creates no extra window and runs each library
+once rather than twice.
+
 
 ## Polyfills
 
-use `prejs` when constructing for inserting pre-required JS into both host and delegate environment:
+`preloads` is a list of scripts to put into the peek window before anything is peeked there, for
+libraries that need something present at parse time to define what they define:
 
-    new rescope({prejs: ["https://...", ...]});
+    new rescope({preloads: ["https://...", ...]});
+
+It only affects the peek window - the host is untouched - and it does nothing under
+`scope: "with"` or for a bundle carrying `prop`, since neither of those peeks. **Note**: earlier
+revisions of this README called this option `prejs` and said it applied to the host as well;
+neither is true of the source.
 
 
 
@@ -164,7 +289,8 @@ use `prejs` when constructing for inserting pre-required JS into both host and d
 
  - This is not meant to be used for sandboxing or for security reason. `@plotdb/rescope` never prevent any scripts from accessing document, and all scripts are still run in the main thread.
  - some libraries such as `d3` may check and use object with the name they are going to use if exists. Thus we always have to restore context in case of disrupt their initialization process.
- - rescope mimics `window` object but there are still limitations. If a library declares a variable by `window.somevar` but accessing it with `somevar`, it will fail.
+ - rescope mimics `window` object but there are still limitations. If a library declares a variable by `window.somevar` but accessing it with `somevar`, the wrapper keeps the two in sync for names it knows about ( the `_rspvarsetcb_` mechanism ), so this works for a library's own exports; a name it never declared and rescope never saw can still come out undefined. Under `scope: "with"` the question does not arise, since both spellings resolve through the same proxy.
+ - in the default mode a library can still see the host page's own globals as free identifiers - rescope only hides the names it is loading. `scope: "with"` hides all of them. See `doc/no-iframe.md`.
 
 
 ## Limitation
@@ -192,7 +318,38 @@ We intercepte `event` to patch `source` by overriding `onmessage`, `addEventList
 
 ### window.parent
 
-TBD
+In the default mode this is still open: `window` inside the wrapper is a local variable holding the
+proxy, but `window.parent` is answered by the real window, so a library that walks up from there
+reaches the host.
+
+`scope: "with"` closes it. Nothing declares `window` in that mode, so the proxy answers for the
+name itself, and it answers `window`, `self`, `globalThis`, `global`, `top`, `parent` and `frames`
+with itself. `window.parent === window` inside a scoped library, and the test suite pins that.
+
+
+## Under Node
+
+`rescope.env(window)` takes the window to work against - under node that is a jsdom window:
+
+    const {JSDOM} = require('jsdom');
+    const rescope = require('@plotdb/rescope');
+    const dom = new JSDOM('<body></body>', {url: 'http://localhost', runScripts: 'outside-only'});
+    rescope.env(dom.window);
+
+`runScripts` is not optional for the default scoping mode. The peek needs a window that can
+evaluate the library, and with jsdom's default ( no `runScripts` ) an iframe's
+`contentWindow.eval` runs somewhere whose assignments never reach that window - so the peek learns
+no names and `load` hands back an empty context, silently. `outside-only` is enough;
+`dangerously` also works. Measured on jsdom 30; jsdom 26 happened to work either way.
+
+`scope: "with"` and bundles carrying `prop` do not peek at all, so neither needs any of this.
+
+## Tests
+
+    ./build && npm test
+
+Runs the suite in `test/` against `dist/` - six real libraries through every scoping and delivery
+mode, in chromium and under jsdom. See `test/README.md`.
 
 
 ## TODO
