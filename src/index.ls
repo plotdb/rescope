@@ -526,6 +526,10 @@ rsp.prototype = Object.create(Object.prototype) <<<
     # store px in libs and create on load, otherwise different libs will intervene each other
     # TODO should we wrap libs in some kind of object so we can keep their state?
     px = if libs.px => libs.px else libs.px = (if dctx and dctx.p => dctx.p else new proxin {mode: @_scope})
+    # the loader's scope decides. a context made without a mode ( `rsp.dual-context!`, `new proxin!` - which is
+    # what @plotdb/block passes ) answers `has` only for names it knows, so under `with` a lib's free names -
+    # `window` in `window.chart = ...` among them - escaped to the real global and its exports never reached ctx.
+    if @_scope == \with and px.mode != \with => px.mode = \with
     ctx = px.ctx!
     proxy = px.proxy!
 
@@ -606,4 +610,5 @@ rsp.proxin = proxin
 #  - `p`: proxy ( for main window )
 #  - `f`: context object for iframe
 #  - `ctx()`: get context from main window
-rsp.dual-context = -> {p: new proxin!, f: {}, ctx: -> @p.ctx!}
+#  - `o.mode`: mode of the proxy ( `load` switches it to `with` anyway when the loader's scope is `with` )
+rsp.dual-context = (o = {}) -> {p: new proxin({mode: o.mode}), f: {}, ctx: -> @p.ctx!}

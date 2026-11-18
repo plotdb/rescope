@@ -154,6 +154,20 @@ window.loadOrder = async function(){
   return out;
 };
 
+// ---- a context made without a mode, loaded under `with` ----------------------------------------
+// @plotdb/block hands `load` a `rescope.dualContext()` of its own, whose proxy has no mode. the
+// loader's scope has to win, or a UMD library's `window.x = ...` escapes to the host window.
+window.withDualContext = async function(){
+  reset();
+  delete window.umdLib;
+  var dctx = rescope.dualContext();
+  try {
+    var ctx = await make({scope: 'with'}).load([{url: '/fixtures/umd.js'}], dctx);
+    return {exported: !!(ctx.umdLib && ctx.umdLib.name === 'umd'), viaDctx: !!dctx.ctx().umdLib,
+            hostTouched: typeof window.umdLib !== 'undefined'};
+  } catch (e) { return {error: String(e).slice(0, 140)} }
+};
+
 // ---- a library out of a bundle, named rather than given a url ---------------------------------
 // nothing fetches a bundled library, so it never learns where it came from unless `load` asks the
 // registry - and the round trip above says nothing about it, since those libs carry their own url.

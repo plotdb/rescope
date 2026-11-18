@@ -125,6 +125,18 @@ async function run() {
       await page.close();
     }
 
+    // ---- a mode-less context under `with` ( what @plotdb/block passes ) ---------------------------
+    group('with, through dualContext');
+    {
+      const {page} = await open();
+      const r = await call(page, 'withDualContext');
+      ok(!r.error || r.error, 'loads');
+      eq(r.exported, true, "a UMD lib's window.x = ... reaches the context");
+      eq(r.viaDctx, true, 'and the caller reads it from its own dual context');
+      eq(r.hostTouched, false, 'the host window is left alone');
+      await page.close();
+    }
+
     // ---- a bundled library, named rather than given a url --------------------------------------
     group('bundle, by name');
     {

@@ -742,6 +742,9 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
       : new proxin({
         mode: this._scope
       });
+  if (this._scope === 'with' && px.mode !== 'with') {
+    px.mode = 'with';
+  }
   ctx = px.ctx();
   proxy = px.proxy();
   /*
@@ -868,9 +871,12 @@ rsp.prototype = (ref$ = Object.create(Object.prototype), ref$.peekScope = functi
 }, ref$);
 rsp.env(typeof self != 'undefined' && self !== null ? self : globalThis);
 rsp.proxin = proxin;
-rsp.dualContext = function(){
+rsp.dualContext = function(o){
+  o == null && (o = {});
   return {
-    p: new proxin(),
+    p: new proxin({
+      mode: o.mode
+    }),
     f: {},
     ctx: function(){
       return this.p.ctx();

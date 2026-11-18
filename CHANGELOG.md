@@ -1,5 +1,15 @@
 # Change Logs
 
+## v5.1.1
+
+ - fix bug: `scope: 'with'` didn't apply to a context made without a mode. `load` used the proxy it
+   was given as is, and `rsp.dualContext()` / `new proxin()` build one in `default` mode - which is
+   what @plotdb/block passes - so a UMD library's `window.x = ...` went to the real window ( and
+   overwrote the host's ) instead of the context, and the caller got nothing. the loader's scope now
+   decides: under `with`, `load` switches the proxy it is given to `with`.
+ - `dualContext` takes `{mode}`.
+
+
 ## v5.1.0
 
 Nothing was removed or renamed. Two defaults moved, though - the first two entries below are what
