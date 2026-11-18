@@ -327,6 +327,18 @@ name itself, and it answers `window`, `self`, `globalThis`, `global`, `top`, `pa
 with itself. `window.parent === window` inside a scoped library, and the test suite pins that.
 
 
+### Host globals in the default mode
+
+The wrapper blanks the names it knows the library defines, so two libraries cannot see each other's
+exports. Every *other* global the host page has set is still reachable from scoped code as a free
+identifier, because that is where an undeclared name resolves.
+
+`scope: "with"` closes this for the same reason it closes `window.parent`: every free identifier
+goes through the proxy, which answers `undefined` for anything the page invented. Do not try to
+close it in the default mode by blanking more names on the real window - that races with anything
+the library does asynchronously.
+
+
 ## Under Node
 
 `rescope.env(window)` takes the window to work against - under node that is a jsdom window:
